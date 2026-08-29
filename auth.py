@@ -70,7 +70,7 @@ def check_cloud_username(username: str) -> bool:
         res = requests.get(
             f"{API_URL}/auth/check-username",
             params={"username": username},
-            timeout=4,
+            timeout=5,
         )
         if res.status_code == 200:
             return res.json().get("exists", False)
@@ -85,7 +85,7 @@ def check_cloud_email_status(email_addr: str) -> tuple[str, str]:
         res = requests.get(
             f"{API_URL}/auth/check-email",
             params={"email": email_addr},
-            timeout=5,
+            timeout=6,
         )
         if res.status_code == 200:
             data = res.json()
@@ -93,11 +93,6 @@ def check_cloud_email_status(email_addr: str) -> tuple[str, str]:
     except Exception:
         pass
     return "available", ""
-
-
-def is_valid_email_syntax(email: str) -> bool:
-    regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-    return bool(re.match(regex, email.strip()))
 
 
 # ==========================================
@@ -117,11 +112,11 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
     while True:
         current_text = "".join(buffer)
 
-        # Trigger check 0.4s after user pauses typing
+        # Trigger check 0.35s after typing pauses
         if (
             current_text
             and current_text != checked_str
-            and (time.time() - last_keystroke_time >= 0.4)
+            and (time.time() - last_keystroke_time >= 0.35)
         ):
             if current_text.lower() in ["b", "back"]:
                 badge = ""
@@ -129,7 +124,7 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
             else:
-                # Active checking animation
+                # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
                 for frame in frames:
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {C.GRAY}{frame}{C.RESET}\033[K")
@@ -173,6 +168,7 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                         badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Taken]{C.RESET}"
                     checked_str = current_text
 
+                # Pin badge permanently and move down
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
                 sys.stdout.flush()
 
@@ -215,6 +211,7 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
 
 
 def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
+    """Provides real-time interactive email syntax, real-world MX server existence, and cloud registration validation."""
     buffer = []
     last_keystroke_time = time.time()
     checked_str = None
@@ -229,7 +226,7 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
     while True:
         current_text = "".join(buffer).strip().lower()
 
-        # Trigger check 0.35s after user pauses typing
+        # Trigger check 0.35s after typing pauses
         if (
             current_text
             and current_text != checked_str
@@ -240,18 +237,18 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                 checked_str = current_text
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
-            elif "@" not in current_text or "." not in current_text.split("@")[-1]:
+            elif "@" not in current_text or "." not in current_text.split("@")[-1] or len(current_text.split("@")[-1].split(".")[-1]) < 2:
                 # Incomplete email while typing
                 checked_str = current_text
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
             else:
-                # 🔄 Play the animated dots while checking cloud
+                # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
                 for frame in frames:
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {C.GRAY}{frame}{C.RESET}\033[K")
                     sys.stdout.flush()
-                    time.sleep(0.09)
+                    time.sleep(0.08)
                     if msvcrt.kbhit():
                         break
 
@@ -303,7 +300,7 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                         error_msg = ""
                     checked_str = current_text
 
-                # Print badge pinned and go to next line
+                # Pin badge permanently and move down
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
                 sys.stdout.flush()
 
@@ -312,6 +309,11 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                 else:
                     if error_msg:
                         print(f"  {C.RED}└─ ❌ {error_msg}{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    elif check_mode == "must_be_available":
+                        print(f"  {C.RED}└─ ❌ Email '{current_text}' is already registered.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    else:
+                        print(f"  {C.RED}└─ ❌ No account found for email '{current_text}'.{C.GRAY} (Type 'b' to go back){C.RESET}")
+
                     buffer = []
                     checked_str = None
                     is_valid = False
@@ -340,6 +342,7 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                 sys.stdout.flush()
 
         time.sleep(0.02)
+
 
 # ==========================================
 # 💾 SESSION MANAGEMENT
