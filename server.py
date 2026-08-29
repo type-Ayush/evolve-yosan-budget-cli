@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import secrets
 import sqlite3
 import time
@@ -177,7 +178,7 @@ def reset_rate_limit(identifier: str, cursor, conn):
 
 
 def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
-    """Dispatches OTP email to any recipient globally using Brevo HTTPS API."""
+    """Dispatches OTP email via Brevo HTTPS API."""
     if not BREVO_API_KEY or not BREVO_SENDER_EMAIL:
         print(f"\n⚠️  [DEV MODE] Brevo not configured. Active OTP code for '{purpose}' is: {otp}\n")
         return True
@@ -260,6 +261,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # Check Username Endpoint
         if parsed_path == "/api/auth/check-username":
             params = parse_qs(parsed_url.query)
             username = params.get("username", [""])[0].strip()
@@ -276,6 +278,25 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 user = cursor.fetchone()
                 exists = bool(user and user["is_verified"] == 1)
                 self._send_json(200, {"username": username, "exists": exists})
+                return
+
+        # Check Email Endpoint
+        if parsed_path == "/api/auth/check-email":
+            params = parse_qs(parsed_url.query)
+            email_addr = params.get("email", [""])[0].strip().lower()
+            if not email_addr:
+                self._send_json(400, {"detail": "Email parameter required"})
+                return
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id, is_verified FROM users WHERE LOWER(email) = LOWER(?)",
+                    (email_addr,)
+                )
+                user = cursor.fetchone()
+                exists = bool(user and user["is_verified"] == 1)
+                self._send_json(200, {"email": email_addr, "exists": exists})
                 return
 
         if parsed_path == "/api/user/profile":
