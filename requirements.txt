@@ -1,9 +1,8 @@
+fastapi
+uvicorn[standard]
 requests
 openpyxl
 reportlab
-requests
-requests
-libsql-client
-requests
 libsql-client
 dnspython
+pydantic
