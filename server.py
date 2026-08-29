@@ -17,7 +17,8 @@ import requests
 DATA_DIR = Path.home() / "Documents"
 DB_FILE = DATA_DIR / "yosan_cloud.db"
 
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "").strip()
 PBKDF2_ROUNDS = 600_000
 
 # Rate Limiting Parameters
@@ -176,9 +177,9 @@ def reset_rate_limit(identifier: str, cursor, conn):
 
 
 def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
-    """Dispatches OTP email via Resend HTTPS API (bypasses all ISP & Cloud SMTP port blocks)."""
-    if not RESEND_API_KEY:
-        print(f"\n⚠️  [DEV MODE] RESEND_API_KEY not configured. Active OTP code for '{purpose}' is: {otp}\n")
+    """Dispatches OTP email to any recipient globally using Brevo HTTPS API."""
+    if not BREVO_API_KEY or not BREVO_SENDER_EMAIL:
+        print(f"\n⚠️  [DEV MODE] Brevo not configured. Active OTP code for '{purpose}' is: {otp}\n")
         return True
 
     html_content = f"""
@@ -194,23 +195,24 @@ def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
     """
 
     headers = {
-        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "api-key": BREVO_API_KEY,
         "Content-Type": "application/json",
+        "accept": "application/json",
     }
     payload = {
-        "from": "Yosan Cloud <onboarding@resend.dev>",
-        "to": [target_email],
+        "sender": {"name": "Yosan Cloud", "email": BREVO_SENDER_EMAIL},
+        "to": [{"email": target_email}],
         "subject": f"[{otp}] Your Yosan Cloud Security Code",
-        "html": html_content,
+        "htmlContent": html_content,
     }
 
     try:
-        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=10)
-        if res.status_code in [200, 201]:
-            print(f"📧 [Resend HTTPS] Security code successfully delivered to {target_email}")
+        res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=10)
+        if res.status_code in [200, 201, 202]:
+            print(f"📧 [Brevo HTTPS] Security code successfully delivered to {target_email}")
             return True
         else:
-            print(f"❌ Resend API Error: {res.status_code} - {res.text}")
+            print(f"❌ Brevo API Error: {res.status_code} - {res.text}")
             return False
     except Exception as e:
         print(f"❌ Email Dispatch Error: {e}")
@@ -309,6 +311,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
         with get_db() as conn:
             cursor = conn.cursor()
 
+            # 1. REGISTRATION
             if parsed_path == "/api/auth/register":
                 username = payload.get("username", "").strip()
                 email_addr = payload.get("email", "").strip().lower()
@@ -362,6 +365,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Verification OTP sent to {email_addr}"})
                 return
 
+            # 2. VERIFY REGISTRATION
             elif parsed_path == "/api/auth/verify-registration":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -405,6 +409,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            # 3. LOGIN
             elif parsed_path == "/api/auth/login":
                 username = payload.get("username", "").strip()
                 password = payload.get("password", "")
@@ -447,6 +452,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            # 4. LOGOUT
             elif parsed_path == "/api/auth/logout":
                 user = authenticate_request(dict(self.headers), cursor)
                 if user:
@@ -455,6 +461,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Session revoked on cloud."})
                 return
 
+            # 5. FORGOT PASSWORD
             elif parsed_path == "/api/auth/forgot-password":
                 username = payload.get("username", "").strip()
                 email_addr = payload.get("email", "").strip().lower()
@@ -490,6 +497,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Password reset OTP sent to {email_addr}"})
                 return
 
+            # 6. RESET PASSWORD
             elif parsed_path == "/api/auth/reset-password":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -527,6 +535,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Password updated successfully. Please log in."})
                 return
 
+            # 7. FORGOT USERNAME
             elif parsed_path == "/api/auth/forgot-username":
                 email_addr = payload.get("email", "").strip().lower()
                 cursor.execute("SELECT username FROM users WHERE LOWER(email) = LOWER(?) AND is_verified = 1", (email_addr,))
@@ -540,6 +549,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Username sent to {email_addr}"})
                 return
 
+            # 8. CHANGE PASSWORD
             elif parsed_path == "/api/user/change-password":
                 user = authenticate_request(dict(self.headers), cursor)
                 if not user:
@@ -564,6 +574,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Password changed successfully."})
                 return
 
+            # 9. DELETE ACCOUNT
             elif parsed_path == "/api/auth/delete-account":
                 user = authenticate_request(dict(self.headers), cursor)
                 if not user:
