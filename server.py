@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
-import email.message
+from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -18,11 +19,11 @@ from urllib.parse import parse_qs, urlparse
 DATA_DIR = Path.home() / "Documents"
 DB_FILE = DATA_DIR / "yosan_cloud.db"
 
-# SMTP Credentials MUST come from Environment Variables
+# SMTP Credentials (Fetched from Render Environment Variables)
 SMTP_SENDER_EMAIL = os.environ.get("YOSAN_SMTP_EMAIL", "").strip()
 SMTP_APP_PASSWORD = os.environ.get("YOSAN_SMTP_APP_PW", "").replace(" ", "").strip()
 SMTP_SERVER = os.environ.get("YOSAN_SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("YOSAN_SMTP_PORT", 587))
+SMTP_PORT = int(os.environ.get("YOSAN_SMTP_PORT", 465))
 PBKDF2_ROUNDS = 600_000
 
 # Rate Limiting Parameters
@@ -184,28 +185,34 @@ def reset_rate_limit(identifier: str, cursor, conn):
 
 
 def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
+    """Dispatches a styled HTML OTP verification email via Gmail SSL on Port 465."""
     if not SMTP_SENDER_EMAIL or not SMTP_APP_PASSWORD:
-        print(f"⚠️  [DEV MODE] SMTP not configured. Active OTP code for '{purpose}' is: {otp}")
+        print(f"\n⚠️  [DEV MODE] SMTP not configured. Active OTP code for '{purpose}' is: {otp}\n")
         return True
 
-    msg = email.message.EmailMessage()
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"[{otp}] Your Yosan Cloud Security Code"
     msg["From"] = f"Yosan Cloud Security <{SMTP_SENDER_EMAIL}>"
     msg["To"] = target_email
-    msg["Subject"] = f"[{otp}] Your Yosan Cloud Security Code"
-    msg.set_content(
-        f"Yosan Budget Security\n\n"
-        f"Your verification code for {purpose} is: {otp}\n\n"
-        f"• This code expires in 5 minutes.\n"
-        f"• You have a maximum of 3 attempts.\n\n"
-        f"If you did not request this code, please secure your account."
-    )
+
+    html_content = f"""
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: auto; padding: 25px; border-radius: 12px; background: #0f141c; color: #f5f6fa; border: 1px solid #1e293b;">
+        <h2 style="color: #00d2ff; margin-top: 0;">Yosan Budget Cloud</h2>
+        <p style="color: #a4b0be; font-size: 15px;">Use the verification code below for <strong>{purpose}</strong>:</p>
+        <div style="background: #182232; padding: 18px; border-radius: 8px; text-align: center; margin: 25px 0; border: 1px dashed #00d2ff;">
+            <span style="font-size: 34px; font-weight: bold; letter-spacing: 6px; color: #2ecc71;">{otp}</span>
+        </div>
+        <p style="color: #747d8c; font-size: 13px;">• This code will expire in <strong>5 minutes</strong>.<br>• Maximum of 3 attempts permitted.</p>
+        <p style="color: #57606f; font-size: 12px; margin-top: 20px;">If you did not initiate this request, you can safely ignore this email.</p>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html"))
 
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
-        server.starttls()
-        server.login(SMTP_SENDER_EMAIL, SMTP_APP_PASSWORD)
-        server.send_message(msg)
-        server.quit()
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+            server.login(SMTP_SENDER_EMAIL, SMTP_APP_PASSWORD)
+            server.sendmail(SMTP_SENDER_EMAIL, target_email, msg.as_string())
+        print(f"📧 [SMTP] Security code successfully delivered to {target_email}")
         return True
     except Exception as e:
         print(f"❌ SMTP Error: {e}")
@@ -249,7 +256,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 "status": "online",
                 "service": "Yosan Cloud API",
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             })
             return
 
@@ -344,7 +351,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                         return
 
                 pw_hash, salt = hash_password(password)
-                now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, salt, is_verified, created_at)
                     VALUES (?, ?, ?, ?, 0, ?)
@@ -352,7 +359,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 conn.commit()
 
                 otp = f"{random.randint(100000, 999999)}"
-                exp_str = (datetime.utcnow() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+                exp_str = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
                     INSERT INTO otps (email, otp_code, purpose, attempts_left, expires_at, created_at)
                     VALUES (?, ?, 'REGISTRATION', 3, ?, ?)
@@ -393,7 +400,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 token = secrets.token_hex(32)
-                exp_str = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+                exp_str = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
                     UPDATE users SET is_verified = 1, token = ?, token_expiry = ? WHERE LOWER(email) = LOWER(?)
                 """, (token, exp_str, email_addr))
@@ -416,7 +423,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 username = payload.get("username", "").strip()
                 password = payload.get("password", "")
 
-                # Check brute-force lockouts for IP and Username
                 ip_ok, ip_wait = check_rate_limit(client_ip, cursor)
                 user_ok, user_wait = check_rate_limit(f"user_{username.lower()}", cursor)
 
@@ -440,12 +446,11 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     self._send_json(403, {"detail": "Account unverified. Verify via email OTP."})
                     return
 
-                # Auth Success: Clear lockout counters
                 reset_rate_limit(client_ip, cursor, conn)
                 reset_rate_limit(f"user_{username.lower()}", cursor, conn)
 
                 token = secrets.token_hex(32)
-                exp_str = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+                exp_str = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("UPDATE users SET token = ?, token_expiry = ? WHERE id = ?", (token, exp_str, user["id"]))
                 conn.commit()
 
@@ -493,8 +498,8 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 otp = f"{random.randint(100000, 999999)}"
-                now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                exp_str = (datetime.utcnow() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                exp_str = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
                     INSERT INTO otps (email, otp_code, purpose, attempts_left, expires_at, created_at)
                     VALUES (?, ?, 'PASSWORD_RESET', 3, ?, ?)
@@ -612,7 +617,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
 
 
 def run_server():
-    # Cloud providers inject the PORT variable (defaulting to 8000 locally)
     port = int(os.environ.get("PORT", 8000))
     host = "0.0.0.0"
     
@@ -628,10 +632,6 @@ def run_server():
     except KeyboardInterrupt:
         print("\n🛑 Cloud server stopped.")
         httpd.server_close()
-
-
-if __name__ == "__main__":
-    run_server()
 
 
 if __name__ == "__main__":
