@@ -1,0 +1,14 @@
+# Local SQLite databases & Excel books
+*.db
+*.xlsx
+.yosan_session.json
+.yosan_cloud_token
+
+# Build artifacts & caches
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+yosan_reports/
+.env
