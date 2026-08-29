@@ -2,3 +2,5 @@ requests
 openpyxl
 reportlab
 requests
+requests
+libsql-client
