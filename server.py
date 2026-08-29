@@ -1,6 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -8,10 +6,10 @@ import os
 from pathlib import Path
 import random
 import secrets
-import smtplib
 import sqlite3
 import time
 from urllib.parse import parse_qs, urlparse
+import requests
 
 # ==========================================
 # ⚙️ SECURE SERVER CONFIGURATION
@@ -19,11 +17,7 @@ from urllib.parse import parse_qs, urlparse
 DATA_DIR = Path.home() / "Documents"
 DB_FILE = DATA_DIR / "yosan_cloud.db"
 
-# SMTP Credentials (Fetched from Render Environment Variables)
-SMTP_SENDER_EMAIL = os.environ.get("YOSAN_SMTP_EMAIL", "").strip()
-SMTP_APP_PASSWORD = os.environ.get("YOSAN_SMTP_APP_PW", "").replace(" ", "").strip()
-SMTP_SERVER = os.environ.get("YOSAN_SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("YOSAN_SMTP_PORT", 465))
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 PBKDF2_ROUNDS = 600_000
 
 # Rate Limiting Parameters
@@ -70,7 +64,7 @@ def init_cloud_db():
             )
         """)
 
-        # 3. Security Audit & Rate Limiting Table (IP & Account Lockout)
+        # 3. Security Audit & Rate Limiting Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS login_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,7 +137,6 @@ def verify_password(password: str, stored_hash: str, salt: str) -> bool:
 
 
 def check_rate_limit(identifier: str, cursor) -> tuple[bool, int]:
-    """Checks if IP or Username is temporarily locked out."""
     now = time.time()
     cursor.execute("SELECT attempts, locked_until FROM login_attempts WHERE identifier = ?", (identifier,))
     row = cursor.fetchone()
@@ -158,7 +151,6 @@ def check_rate_limit(identifier: str, cursor) -> tuple[bool, int]:
 
 
 def record_failed_attempt(identifier: str, cursor, conn):
-    """Increments fail counter and applies lockout when threshold is reached."""
     now = time.time()
     cursor.execute("SELECT id, attempts FROM login_attempts WHERE identifier = ?", (identifier,))
     row = cursor.fetchone()
@@ -179,21 +171,15 @@ def record_failed_attempt(identifier: str, cursor, conn):
 
 
 def reset_rate_limit(identifier: str, cursor, conn):
-    """Resets attempts on successful authentication."""
     cursor.execute("DELETE FROM login_attempts WHERE identifier = ?", (identifier,))
     conn.commit()
 
 
 def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
-    """Dispatches a styled HTML OTP verification email via Gmail SSL on Port 465."""
-    if not SMTP_SENDER_EMAIL or not SMTP_APP_PASSWORD:
-        print(f"\n⚠️  [DEV MODE] SMTP not configured. Active OTP code for '{purpose}' is: {otp}\n")
+    """Dispatches OTP email via Resend HTTPS API (bypasses all ISP & Cloud SMTP port blocks)."""
+    if not RESEND_API_KEY:
+        print(f"\n⚠️  [DEV MODE] RESEND_API_KEY not configured. Active OTP code for '{purpose}' is: {otp}\n")
         return True
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[{otp}] Your Yosan Cloud Security Code"
-    msg["From"] = f"Yosan Cloud Security <{SMTP_SENDER_EMAIL}>"
-    msg["To"] = target_email
 
     html_content = f"""
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: auto; padding: 25px; border-radius: 12px; background: #0f141c; color: #f5f6fa; border: 1px solid #1e293b;">
@@ -206,16 +192,28 @@ def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
         <p style="color: #57606f; font-size: 12px; margin-top: 20px;">If you did not initiate this request, you can safely ignore this email.</p>
     </div>
     """
-    msg.attach(MIMEText(html_content, "html"))
+
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "from": "Yosan Cloud <onboarding@resend.dev>",
+        "to": [target_email],
+        "subject": f"[{otp}] Your Yosan Cloud Security Code",
+        "html": html_content,
+    }
 
     try:
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
-            server.login(SMTP_SENDER_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_SENDER_EMAIL, target_email, msg.as_string())
-        print(f"📧 [SMTP] Security code successfully delivered to {target_email}")
-        return True
+        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=10)
+        if res.status_code in [200, 201]:
+            print(f"📧 [Resend HTTPS] Security code successfully delivered to {target_email}")
+            return True
+        else:
+            print(f"❌ Resend API Error: {res.status_code} - {res.text}")
+            return False
     except Exception as e:
-        print(f"❌ SMTP Error: {e}")
+        print(f"❌ Email Dispatch Error: {e}")
         return False
 
 
@@ -260,7 +258,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # Username Check Endpoint
         if parsed_path == "/api/auth/check-username":
             params = parse_qs(parsed_url.query)
             username = params.get("username", [""])[0].strip()
@@ -279,7 +276,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"username": username, "exists": exists})
                 return
 
-        # User Profile Endpoint
         if parsed_path == "/api/user/profile":
             with get_db() as conn:
                 cursor = conn.cursor()
@@ -313,9 +309,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
         with get_db() as conn:
             cursor = conn.cursor()
 
-            # -------------------------------------------------------------
-            # 1. REGISTRATION (Rate limited OTPs)
-            # -------------------------------------------------------------
             if parsed_path == "/api/auth/register":
                 username = payload.get("username", "").strip()
                 email_addr = payload.get("email", "").strip().lower()
@@ -328,7 +321,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"detail": "Password must be at least 6 characters"})
                     return
 
-                # Rate limiting: 1 OTP per 60 seconds per email
                 cursor.execute("""
                     SELECT created_at FROM otps 
                     WHERE LOWER(email) = LOWER(?) AND created_at > datetime('now', '-60 seconds')
@@ -370,9 +362,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Verification OTP sent to {email_addr}"})
                 return
 
-            # -------------------------------------------------------------
-            # 2. VERIFY REGISTRATION
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/verify-registration":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -416,9 +405,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # -------------------------------------------------------------
-            # 3. LOGIN (With Lockout Rate Limiting)
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/login":
                 username = payload.get("username", "").strip()
                 password = payload.get("password", "")
@@ -461,9 +447,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # -------------------------------------------------------------
-            # 4. LOGOUT (Server-Side Token Invalidation)
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/logout":
                 user = authenticate_request(dict(self.headers), cursor)
                 if user:
@@ -472,9 +455,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Session revoked on cloud."})
                 return
 
-            # -------------------------------------------------------------
-            # 5. FORGOT PASSWORD
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/forgot-password":
                 username = payload.get("username", "").strip()
                 email_addr = payload.get("email", "").strip().lower()
@@ -510,9 +490,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Password reset OTP sent to {email_addr}"})
                 return
 
-            # -------------------------------------------------------------
-            # 6. RESET PASSWORD
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/reset-password":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -550,9 +527,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Password updated successfully. Please log in."})
                 return
 
-            # -------------------------------------------------------------
-            # 7. FORGOT USERNAME
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/forgot-username":
                 email_addr = payload.get("email", "").strip().lower()
                 cursor.execute("SELECT username FROM users WHERE LOWER(email) = LOWER(?) AND is_verified = 1", (email_addr,))
@@ -566,9 +540,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Username sent to {email_addr}"})
                 return
 
-            # -------------------------------------------------------------
-            # 8. CHANGE PASSWORD
-            # -------------------------------------------------------------
             elif parsed_path == "/api/user/change-password":
                 user = authenticate_request(dict(self.headers), cursor)
                 if not user:
@@ -593,9 +564,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": "Password changed successfully."})
                 return
 
-            # -------------------------------------------------------------
-            # 9. DELETE ACCOUNT
-            # -------------------------------------------------------------
             elif parsed_path == "/api/auth/delete-account":
                 user = authenticate_request(dict(self.headers), cursor)
                 if not user:
