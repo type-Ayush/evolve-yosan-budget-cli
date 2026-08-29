@@ -1,16 +1,21 @@
+from datetime import datetime
 import gc
 import getpass
+import itertools
 import json
 import msvcrt
 import os
 from pathlib import Path
+import re
 import sys
+import threading
 import time
 import requests
 
 os.system("")
 
-API_URL = "http://127.0.0.1:8000/api"
+# Cloud Production API URL with local development fallback
+API_URL = os.environ.get("YOSAN_API_URL", "https://evolve-yosan-budget-cli.onrender.com/api").rstrip("/")
 SESSION_FILE = Path.home() / "Documents" / ".yosan_session.json"
 
 
@@ -29,6 +34,37 @@ class C:
     WHITE   = "\033[38;2;245;246;250m"
 
 
+# ==========================================
+# ⏳ ANIMATED SPINNER
+# ==========================================
+class Spinner:
+    """Threaded CLI spinner animation for active network dispatches."""
+    def __init__(self, message="Sending OTP..."):
+        self.message = message
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+
+    def _spin(self):
+        spinner_cycle = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+        while not self._stop_event.is_set():
+            sys.stdout.write(f"\r{C.CYAN}{next(spinner_cycle)}{C.RESET} {C.YELLOW}{self.message}{C.RESET}   ")
+            sys.stdout.flush()
+            time.sleep(0.08)
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_event.set()
+        self._thread.join()
+
+
+# ==========================================
+# 🔍 CLOUD VALIDATION UTILITIES
+# ==========================================
 def check_cloud_username(username: str) -> bool:
     try:
         res = requests.get(
@@ -43,6 +79,27 @@ def check_cloud_username(username: str) -> bool:
     return False
 
 
+def check_cloud_email(email_addr: str) -> bool:
+    try:
+        res = requests.get(
+            f"{API_URL}/auth/check-email",
+            params={"email": email_addr},
+            timeout=4,
+        )
+        if res.status_code == 200:
+            return res.json().get("exists", False)
+    except Exception:
+        pass
+    return False
+
+
+def is_valid_email_syntax(email: str) -> bool:
+    return bool(re.match(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$", email))
+
+
+# ==========================================
+# ⌨️ INTERACTIVE LIVE INPUT HANDLERS
+# ==========================================
 def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
     buffer = []
     last_keystroke_time = time.time()
@@ -60,7 +117,7 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
         if (
             current_text
             and current_text != checked_str
-            and (time.time() - last_keystroke_time >= 1.0)
+            and (time.time() - last_keystroke_time >= 0.8)
         ):
             if current_text.lower() in ["b", "back"]:
                 badge = ""
@@ -72,7 +129,7 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                 for frame in frames:
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {C.GRAY}{frame}{C.RESET}\033[K\033[u")
                     sys.stdout.flush()
-                    time.sleep(0.12)
+                    time.sleep(0.10)
                     if msvcrt.kbhit():
                         break
 
@@ -152,6 +209,135 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
         time.sleep(0.02)
 
 
+def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
+    """Provides real-time interactive email syntax and availability validation."""
+    buffer = []
+    last_keystroke_time = time.time()
+    checked_str = None
+    is_valid = False
+    badge = ""
+
+    colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
+    sys.stdout.write(f"\r{colored_prompt}\033[K")
+    sys.stdout.flush()
+
+    while True:
+        current_text = "".join(buffer).strip().lower()
+
+        if (
+            current_text
+            and current_text != checked_str
+            and (time.time() - last_keystroke_time >= 0.8)
+        ):
+            if current_text in ["b", "back"]:
+                badge = ""
+                checked_str = current_text
+                sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
+                sys.stdout.flush()
+            elif not is_valid_email_syntax(current_text):
+                is_valid = False
+                badge = f"{C.YELLOW}⚠ [Invalid Format]{C.RESET}"
+                checked_str = current_text
+                sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {badge}\033[K\033[u")
+                sys.stdout.flush()
+            else:
+                frames = [".  ", ".. ", "..."]
+                for frame in frames:
+                    sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {C.GRAY}{frame}{C.RESET}\033[K\033[u")
+                    sys.stdout.flush()
+                    time.sleep(0.10)
+                    if msvcrt.kbhit():
+                        break
+
+                if not msvcrt.kbhit():
+                    exists = check_cloud_email(current_text)
+                    if check_mode == "must_be_available":
+                        is_valid = not exists
+                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Already Registered]{C.RESET}"
+                    elif check_mode == "must_exist":
+                        is_valid = exists
+                        badge = f"{C.GREEN}✔ [Found]{C.RESET}" if exists else f"{C.RED}✖ [Not Registered]{C.RESET}"
+
+                    checked_str = current_text
+                    sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {badge}\033[K\033[u")
+                    sys.stdout.flush()
+
+        if msvcrt.kbhit():
+            ch = msvcrt.getwch()
+            last_keystroke_time = time.time()
+
+            if ch in ("\r", "\n"):
+                if not current_text:
+                    continue
+
+                if current_text in ["b", "back"]:
+                    sys.stdout.write("\n")
+                    return "BACK"
+
+                if not is_valid_email_syntax(current_text):
+                    print(f"\n  {C.RED}└─ ❌ Please enter a valid email format (e.g. name@domain.com){C.RESET}")
+                    buffer = []
+                    checked_str = None
+                    is_valid = False
+                    badge = ""
+                    sys.stdout.write(f"\r{colored_prompt}\033[K")
+                    sys.stdout.flush()
+                    continue
+
+                if checked_str != current_text:
+                    exists = check_cloud_email(current_text)
+                    if check_mode == "must_be_available":
+                        is_valid = not exists
+                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Already Registered]{C.RESET}"
+                    elif check_mode == "must_exist":
+                        is_valid = exists
+                        badge = f"{C.GREEN}✔ [Found]{C.RESET}" if exists else f"{C.RED}✖ [Not Registered]{C.RESET}"
+                    checked_str = current_text
+
+                sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
+                sys.stdout.flush()
+
+                if is_valid:
+                    return current_text
+                else:
+                    if check_mode == "must_be_available":
+                        print(f"  {C.RED}└─ ❌ Email '{current_text}' is already registered.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    else:
+                        print(f"  {C.RED}└─ ❌ No account found for email '{current_text}'.{C.GRAY} (Type 'b' to go back){C.RESET}")
+
+                    buffer = []
+                    checked_str = None
+                    is_valid = False
+                    badge = ""
+                    sys.stdout.write(f"\r{colored_prompt}\033[K")
+                    sys.stdout.flush()
+
+            elif ch in ("\x08", "\b"):
+                if buffer:
+                    buffer.pop()
+                    checked_str = None
+                    is_valid = False
+                    badge = ""
+                    sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{''.join(buffer)}{C.RESET}\033[K")
+                    sys.stdout.flush()
+
+            elif ch == "\x03":
+                sys.exit(0)
+
+            elif ch.isprintable():
+                buffer.append(ch)
+                checked_str = None
+                is_valid = False
+                badge = ""
+                sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{''.join(buffer)}{C.RESET}\033[K")
+                sys.stdout.flush()
+
+        time.sleep(0.02)
+
+
+# ==========================================
+# 💾 SESSION MANAGEMENT
+# ==========================================
 def get_session_data() -> dict:
     if SESSION_FILE.exists():
         try:
@@ -192,13 +378,16 @@ def clear_session():
     if SESSION_FILE.exists():
         SESSION_FILE.unlink()
 
-    print(f"\n{C.YELLOW}🔒 Logged out of Yosan Cloud. Token revoked and session cleared.{C.RESET}\n")
+    print(f"\n{C.YELLOW}🔒 Logged out of Yosan Cloud. Session cleared.{C.RESET}\n")
 
 
+# ==========================================
+# 🚀 AUTHENTICATION FLOWS
+# ==========================================
 def register_flow() -> bool:
     print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
-    print(f"║               {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                 ║")
-    print(f"║      {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
+    print(f"║                {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                ║")
+    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
     print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     username = live_username_input("Enter Desired Username: ", check_mode="must_be_available")
@@ -206,8 +395,8 @@ def register_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    email = input(f"{C.CYAN}Enter Email Address: {C.RESET}").strip().lower()
-    if email in ["b", "back"]:
+    email = live_email_input("Enter Email Address: ", check_mode="must_be_available")
+    if email == "BACK":
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
@@ -226,10 +415,13 @@ def register_flow() -> bool:
         return False
 
     try:
-        res = requests.post(
-            f"{API_URL}/auth/register",
-            json={"username": username, "email": email, "password": password},
-        )
+        with Spinner("Dispatched OTP request... Generating code"):
+            res = requests.post(
+                f"{API_URL}/auth/register",
+                json={"username": username, "email": email, "password": password},
+                timeout=15,
+            )
+
         if res.status_code != 200:
             print(f"{C.RED}❌ {res.json().get('detail', 'Registration failed')}{C.RESET}")
             return False
@@ -240,10 +432,13 @@ def register_flow() -> bool:
             print(f"{C.GRAY}↩ Registration aborted.{C.RESET}")
             return False
 
-        verify_res = requests.post(
-            f"{API_URL}/auth/verify-registration",
-            json={"email": email, "otp_code": otp},
-        )
+        with Spinner("Verifying security token..."):
+            verify_res = requests.post(
+                f"{API_URL}/auth/verify-registration",
+                json={"email": email, "otp_code": otp},
+                timeout=10,
+            )
+
         if verify_res.status_code == 200:
             data = verify_res.json()
             save_session(data["token"], data["username"])
@@ -270,10 +465,13 @@ def login_flow() -> bool:
         return False
 
     try:
-        res = requests.post(
-            f"{API_URL}/auth/login",
-            json={"username": username, "password": password},
-        )
+        with Spinner("Authenticating credentials..."):
+            res = requests.post(
+                f"{API_URL}/auth/login",
+                json={"username": username, "password": password},
+                timeout=10,
+            )
+
         if res.status_code == 200:
             data = res.json()
             save_session(data["token"], data["username"])
@@ -301,16 +499,19 @@ def forgot_password_flow():
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return
 
-    email = input(f"{C.CYAN}Enter Registered Email: {C.RESET}").strip().lower()
-    if email in ["b", "back"]:
+    email = live_email_input("Enter Registered Email: ", check_mode="must_exist")
+    if email == "BACK":
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return
 
     try:
-        res = requests.post(
-            f"{API_URL}/auth/forgot-password",
-            json={"username": username, "email": email},
-        )
+        with Spinner("Sending password recovery OTP..."):
+            res = requests.post(
+                f"{API_URL}/auth/forgot-password",
+                json={"username": username, "email": email},
+                timeout=15,
+            )
+
         if res.status_code != 200:
             print(f"{C.RED}❌ {res.json().get('detail')}{C.RESET}")
             return
@@ -329,10 +530,13 @@ def forgot_password_flow():
             print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
             return
 
-        reset_res = requests.post(
-            f"{API_URL}/auth/reset-password",
-            json={"email": email, "otp_code": otp, "new_password": new_pw},
-        )
+        with Spinner("Updating cloud security credentials..."):
+            reset_res = requests.post(
+                f"{API_URL}/auth/reset-password",
+                json={"email": email, "otp_code": otp, "new_password": new_pw},
+                timeout=10,
+            )
+
         if reset_res.status_code == 200:
             print(f"\n{C.GREEN}🎉 {reset_res.json()['message']}{C.RESET}\n")
         else:
@@ -347,16 +551,19 @@ def forgot_username_flow():
     print(f"         {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}")
     print(f"═══════════════════════════════════════════════════════{C.RESET}")
 
-    email = input(f"{C.CYAN}Enter Registered Email Address: {C.RESET}").strip().lower()
-    if email in ["b", "back"]:
+    email = live_email_input("Enter Registered Email Address: ", check_mode="must_exist")
+    if email == "BACK":
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return
 
     try:
-        res = requests.post(
-            f"{API_URL}/auth/forgot-username",
-            json={"email": email},
-        )
+        with Spinner("Recovering account username..."):
+            res = requests.post(
+                f"{API_URL}/auth/forgot-username",
+                json={"email": email},
+                timeout=15,
+            )
+
         if res.status_code == 200:
             print(f"\n{C.GREEN}📨 {res.json().get('message')}{C.RESET}\n")
         else:
@@ -389,11 +596,14 @@ def delete_account_flow():
 
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        res = requests.post(
-            f"{API_URL}/auth/delete-account",
-            json={"password": password},
-            headers=headers,
-        )
+        with Spinner("Wiping account and cloud records..."):
+            res = requests.post(
+                f"{API_URL}/auth/delete-account",
+                json={"password": password},
+                headers=headers,
+                timeout=10,
+            )
+
         if res.status_code == 200:
             clear_session()
             gc.collect()
@@ -430,7 +640,9 @@ def show_profile_view():
 
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        res = requests.get(f"{API_URL}/user/profile", headers=headers)
+        with Spinner("Fetching user profile..."):
+            res = requests.get(f"{API_URL}/user/profile", headers=headers, timeout=10)
+
         if res.status_code != 200:
             print(f"\n{C.RED}❌ Failed to fetch profile: {res.json().get('detail', 'Session error')}{C.RESET}")
             return
@@ -445,7 +657,7 @@ def show_profile_view():
 
     while True:
         print(f"\n{C.CYAN}╔══════════════════════════════════════════════════════════╗")
-        print(f"║               {C.BOLD}{C.WHITE}YOSAN USER ACCOUNT PROFILE{C.RESET}{C.CYAN}                 ║")
+        print(f"║                {C.BOLD}{C.WHITE}YOSAN USER ACCOUNT PROFILE{C.RESET}{C.CYAN}                ║")
         print(f"╚══════════════════════════════════════════════════════════╝{C.RESET}")
         print(f" {C.CYAN}•{C.RESET} {C.BOLD}Username{C.RESET}          : {C.GREEN}{user_info['username']}{C.RESET}")
         print(f" {C.CYAN}•{C.RESET} {C.BOLD}Registered Email{C.RESET}  : {C.WHITE}{user_info['email']}{C.RESET}")
@@ -475,11 +687,13 @@ def show_profile_view():
                 continue
 
             try:
-                chg_res = requests.post(
-                    f"{API_URL}/user/change-password",
-                    headers=headers,
-                    json={"old_password": old_pw, "new_password": new_pw},
-                )
+                with Spinner("Updating cloud password..."):
+                    chg_res = requests.post(
+                        f"{API_URL}/user/change-password",
+                        headers=headers,
+                        json={"old_password": old_pw, "new_password": new_pw},
+                        timeout=10,
+                    )
                 if chg_res.status_code == 200:
                     print(f"\n{C.GREEN}🎉 {chg_res.json()['message']}{C.RESET}\n")
                 else:
