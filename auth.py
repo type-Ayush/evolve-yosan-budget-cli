@@ -102,29 +102,38 @@ def is_valid_email_syntax(email: str) -> bool:
 # ==========================================
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
-def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
+def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
+    """Provides real-time interactive email syntax, real-world MX server existence, and cloud registration validation."""
     buffer = []
     last_keystroke_time = time.time()
     checked_str = None
     is_valid = False
     badge = ""
+    error_msg = ""
 
     colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
     sys.stdout.write(f"\r{colored_prompt}\033[K")
     sys.stdout.flush()
 
     while True:
-        current_text = "".join(buffer)
+        current_text = "".join(buffer).strip().lower()
 
         if (
             current_text
             and current_text != checked_str
-            and (time.time() - last_keystroke_time >= 0.6)
+            and (time.time() - last_keystroke_time >= 0.5)
         ):
-            if current_text.lower() in ["b", "back"]:
+            if current_text in ["b", "back"]:
                 badge = ""
                 checked_str = current_text
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
+                sys.stdout.flush()
+            elif not is_valid_email_syntax(current_text):
+                is_valid = False
+                badge = f"{C.YELLOW}⚠ [Invalid Format]{C.RESET}"
+                error_msg = "Please enter a valid email format (e.g. name@gmail.com)"
+                checked_str = current_text
+                sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {badge}\033[K\033[u")
                 sys.stdout.flush()
             else:
                 frames = [".  ", ".. ", "..."]
@@ -136,13 +145,19 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                         break
 
                 if not msvcrt.kbhit():
-                    exists = check_cloud_username(current_text)
-                    if check_mode == "must_exist":
-                        is_valid = exists
-                        badge = f"{C.GREEN}✔ [Verified]{C.RESET}" if exists else f"{C.RED}✖ [Not Found]{C.RESET}"
-                    elif check_mode == "must_be_available":
-                        is_valid = not exists
-                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Taken]{C.RESET}"
+                    status, msg = check_cloud_email_status(current_text)
+                    if status == "taken":
+                        is_valid = False if check_mode == "must_be_available" else True
+                        badge = f"{C.RED}✖ [Already Registered]{C.RESET}" if check_mode == "must_be_available" else f"{C.GREEN}✔ [Found]{C.RESET}"
+                        error_msg = "This email is already registered."
+                    elif status == "invalid":
+                        is_valid = False
+                        badge = f"{C.RED}✖ [Domain Does Not Exist]{C.RESET}"
+                        error_msg = msg
+                    else:
+                        is_valid = True if check_mode == "must_be_available" else False
+                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if check_mode == "must_be_available" else f"{C.RED}✖ [Not Registered]{C.RESET}"
+                        error_msg = ""
 
                     checked_str = current_text
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[s {badge}\033[K\033[u")
@@ -156,30 +171,49 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                 if not current_text:
                     continue
 
-                if current_text.lower() in ["b", "back"]:
+                if current_text in ["b", "back"]:
                     sys.stdout.write("\n")
                     return "BACK"
 
+                if not is_valid_email_syntax(current_text):
+                    print(f"\n  {C.RED}└─ ❌ Please enter a valid email address (e.g. name@domain.com){C.RESET}")
+                    buffer = []
+                    checked_str = None
+                    is_valid = False
+                    badge = ""
+                    sys.stdout.write(f"\r{colored_prompt}\033[K")
+                    sys.stdout.flush()
+                    continue
+
                 if checked_str != current_text:
-                    exists = check_cloud_username(current_text)
-                    if check_mode == "must_exist":
-                        is_valid = exists
-                        badge = f"{C.GREEN}✔ [Verified]{C.RESET}" if exists else f"{C.RED}✖ [Not Found]{C.RESET}"
-                    elif check_mode == "must_be_available":
-                        is_valid = not exists
-                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Taken]{C.RESET}"
+                    status, msg = check_cloud_email_status(current_text)
+                    if status == "taken":
+                        is_valid = False if check_mode == "must_be_available" else True
+                        badge = f"{C.RED}✖ [Already Registered]{C.RESET}" if check_mode == "must_be_available" else f"{C.GREEN}✔ [Found]{C.RESET}"
+                        error_msg = "This email is already registered."
+                    elif status == "invalid":
+                        is_valid = False
+                        badge = f"{C.RED}✖ [Domain Does Not Exist]{C.RESET}"
+                        error_msg = msg
+                    else:
+                        is_valid = True if check_mode == "must_be_available" else False
+                        badge = f"{C.GREEN}✔ [Available]{C.RESET}" if check_mode == "must_be_available" else f"{C.RED}✖ [Not Registered]{C.RESET}"
+                        error_msg = ""
                     checked_str = current_text
 
+                # Explicitly print the verified badge on screen before moving down
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
                 sys.stdout.flush()
 
                 if is_valid:
                     return current_text
                 else:
-                    if check_mode == "must_exist":
-                        print(f"  {C.RED}└─ ❌ Username '{current_text}' does not exist.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    if error_msg:
+                        print(f"  {C.RED}└─ ❌ {error_msg}{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    elif check_mode == "must_be_available":
+                        print(f"  {C.RED}└─ ❌ Email '{current_text}' is already registered.{C.GRAY} (Type 'b' to go back){C.RESET}")
                     else:
-                        print(f"  {C.RED}└─ ❌ Username '{current_text}' is already taken.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                        print(f"  {C.RED}└─ ❌ No account found for email '{current_text}'.{C.GRAY} (Type 'b' to go back){C.RESET}")
 
                     buffer = []
                     checked_str = None
