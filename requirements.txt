@@ -4,3 +4,6 @@ reportlab
 requests
 requests
 libsql-client
+requests
+libsql-client
+dnspython
