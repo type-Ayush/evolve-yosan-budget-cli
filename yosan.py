@@ -174,15 +174,23 @@ def show_settings_menu():
         lang = cfg.get("language", "en")
         theme = cfg.get("color_theme", "cyber_cyan")
 
-        print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════╗{C.RESET}")
-        print(f"{C.CYAN}║{C.RESET}                 {C.BOLD}{C.WHITE}⚙️  YOSAN CLI PREFERENCES & SETTINGS{C.RESET}             {C.CYAN}║{C.RESET}")
-        print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════╝{C.RESET}")
+        # 65-character exact symmetrical banner
+        box_width = 65
+        title_text = "YOSAN CLI PREFERENCES & SETTINGS"
+        # 31 chars title + 2 chars icon display width = 33 display width
+        t_spaces = box_width - (len(title_text) + 2)
+        t_l = t_spaces // 2
+        t_r = t_spaces - t_l
+
+        print(f"\n{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
+        print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}⚙ {title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
+        print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
         print(f"  {C.CYAN}[1]{C.RESET} Currency Notation    : {C.GREEN}{sym} ({code}){C.RESET}")
         print(f"  {C.CYAN}[2]{C.RESET} Display Language     : {C.YELLOW}{lang.upper()}{C.RESET}")
         print(f"  {C.CYAN}[3]{C.RESET} Terminal Color Theme : {C.PURPLE}{theme}{C.RESET}")
         print(f"  {C.CYAN}[4]{C.RESET} Reset to Defaults")
         print(f"  {C.CYAN}[5]{C.RESET} Back to Terminal {C.GRAY}(or 'b'){C.RESET}")
-        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}" + "─" * (box_width + 2) + f"{C.RESET}")
 
         ch = input(f"{C.CYAN}Select an option (1-5) [Default 5]: {C.RESET}").strip()
 
@@ -246,11 +254,7 @@ def show_settings_menu():
 
         elif ch in ["5", "", "b", "back", "q", "exit"]:
             break
-
-
-# ==========================================
-# DATA DOWNLOAD & BACKUP PACKAGER
-# ==========================================
+        
 def download_user_data(target_path: str = None):
     init_db()
     sync_to_excel()
