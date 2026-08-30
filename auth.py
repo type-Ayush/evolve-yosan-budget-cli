@@ -443,26 +443,32 @@ def register_flow() -> bool:
             return False
 
         print(f"\n{C.GREEN}📨 {res.json()['message']}{C.RESET}")
-        otp = input(f"{C.YELLOW}Enter 6-digit OTP code sent to your inbox: {C.RESET}").strip()
-        if otp in ["b", "back"]:
-            print(f"{C.GRAY}↩ Registration aborted.{C.RESET}")
-            return False
 
-        with Spinner("Verifying security token..."):
-            verify_res = requests.post(
-                f"{API_URL}/auth/verify-registration",
-                json={"email": email, "otp_code": otp},
-                timeout=10,
-            )
+        # Interactive OTP Retry Loop
+        while True:
+            otp = input(f"{C.YELLOW}Enter 6-digit OTP code sent to your inbox: {C.RESET}").strip()
+            if otp in ["b", "back"]:
+                print(f"{C.GRAY}↩ Registration aborted.{C.RESET}")
+                return False
 
-        if verify_res.status_code == 200:
-            data = verify_res.json()
-            save_session(data["token"], data["username"])
-            print(f"\n{C.GREEN}{C.BOLD}🎉 Welcome to Yosan Cloud, {data['username']}!{C.RESET}\n")
-            return True
-        else:
-            print(f"{C.RED}❌ Verification failed: {verify_res.json().get('detail', 'Invalid OTP')}{C.RESET}")
-            return False
+            with Spinner("Verifying security token..."):
+                verify_res = requests.post(
+                    f"{API_URL}/auth/verify-registration",
+                    json={"email": email, "otp_code": otp},
+                    timeout=10,
+                )
+
+            if verify_res.status_code == 200:
+                data = verify_res.json()
+                save_session(data["token"], data["username"])
+                print(f"\n{C.GREEN}{C.BOLD}🎉 Welcome to Yosan Cloud, {data['username']}!{C.RESET}\n")
+                return True
+            else:
+                detail = verify_res.json().get('detail', 'Invalid OTP')
+                print(f"{C.RED}❌ Verification failed: {detail}{C.RESET}")
+                if verify_res.status_code == 403 or "revoked" in detail.lower() or "register again" in detail.lower():
+                    return False
+
     except requests.exceptions.ConnectionError:
         print(f"{C.RED}❌ Could not connect to Yosan Cloud Server.{C.RESET}")
         return False
@@ -533,30 +539,38 @@ def forgot_password_flow():
             return
 
         print(f"\n{C.GREEN}📨 {res.json()['message']}{C.RESET}")
-        otp = input(f"{C.YELLOW}Enter 6-digit OTP from email: {C.RESET}").strip()
-        if otp in ["b", "back"]:
-            return
 
-        new_pw = masked_password_input("Enter New Password: ")
-        if new_pw in ["b", "back"]:
-            return
+        # Interactive OTP & Password Reset Retry Loop
+        while True:
+            otp = input(f"{C.YELLOW}Enter 6-digit OTP from email: {C.RESET}").strip()
+            if otp in ["b", "back"]:
+                return
 
-        confirm_pw = masked_password_input("Confirm New Password: ")
-        if new_pw != confirm_pw:
-            print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
-            return
+            new_pw = masked_password_input("Enter New Password: ")
+            if new_pw in ["b", "back"]:
+                return
 
-        with Spinner("Updating cloud security credentials..."):
-            reset_res = requests.post(
-                f"{API_URL}/auth/reset-password",
-                json={"email": email, "otp_code": otp, "new_password": new_pw},
-                timeout=10,
-            )
+            confirm_pw = masked_password_input("Confirm New Password: ")
+            if new_pw != confirm_pw:
+                print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
+                continue
 
-        if reset_res.status_code == 200:
-            print(f"\n{C.GREEN}🎉 {reset_res.json()['message']}{C.RESET}\n")
-        else:
-            print(f"{C.RED}❌ {reset_res.json().get('detail')}{C.RESET}")
+            with Spinner("Updating cloud security credentials..."):
+                reset_res = requests.post(
+                    f"{API_URL}/auth/reset-password",
+                    json={"email": email, "otp_code": otp, "new_password": new_pw},
+                    timeout=10,
+                )
+
+            if reset_res.status_code == 200:
+                print(f"\n{C.GREEN}🎉 {reset_res.json()['message']}{C.RESET}\n")
+                return
+            else:
+                detail = reset_res.json().get('detail', 'Invalid OTP')
+                print(f"{C.RED}❌ {detail}{C.RESET}")
+                if "expired" in detail.lower() or "revoked" in detail.lower():
+                    return
+
     except requests.exceptions.ConnectionError:
         print(f"{C.RED}❌ Cloud server unreachable.{C.RESET}")
 
