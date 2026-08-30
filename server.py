@@ -466,7 +466,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Verification OTP sent to {email_addr}"})
                 return
 
-            # 2. VERIFY REGISTRATION
+            # 2. VERIFY REGISTRATION (With atomic attempts decrement)
             elif parsed_path == "/api/auth/verify-registration":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -482,14 +482,19 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 otp_row = otp_rows[0]
-                if int(otp_row.get("attempts_left", 0)) <= 0:
+                current_attempts = int(otp_row.get("attempts_left", 3))
+
+                if current_attempts <= 1:
+                    db.execute("DELETE FROM otps WHERE id = ?", (otp_row["id"],))
+                    db.commit()
                     self._send_json(403, {"detail": "Too many failed attempts. Code revoked. Register again."})
                     return
 
                 if not secrets.compare_digest(str(otp_row.get("otp_code")), str(otp_code)):
-                    remaining = int(otp_row.get("attempts_left", 3)) - 1
-                    db.execute("UPDATE otps SET attempts_left = ? WHERE id = ?", (remaining, otp_row["id"]))
+                    # Atomic SQL decrement
+                    db.execute("UPDATE otps SET attempts_left = attempts_left - 1 WHERE id = ?", (otp_row["id"],))
                     db.commit()
+                    remaining = current_attempts - 1
                     self._send_json(400, {"detail": f"Incorrect code. {remaining} attempt(s) remaining."})
                     return
 
@@ -602,7 +607,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Password reset OTP sent to {email_addr}"})
                 return
 
-            # 6. RESET PASSWORD
+            # 6. RESET PASSWORD (With atomic attempts decrement)
             elif parsed_path == "/api/auth/reset-password":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -618,15 +623,24 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     ORDER BY id DESC LIMIT 1
                 """, (email_addr,))
 
-                if not otp_rows or int(otp_rows[0].get("attempts_left", 0)) <= 0:
+                if not otp_rows:
                     self._send_json(400, {"detail": "Invalid or expired OTP."})
                     return
 
                 otp_row = otp_rows[0]
-                if not secrets.compare_digest(str(otp_row.get("otp_code")), str(otp_code)):
-                    remaining = int(otp_row.get("attempts_left", 3)) - 1
-                    db.execute("UPDATE otps SET attempts_left = ? WHERE id = ?", (remaining, otp_row["id"]))
+                current_attempts = int(otp_row.get("attempts_left", 3))
+
+                if current_attempts <= 1:
+                    db.execute("DELETE FROM otps WHERE id = ?", (otp_row["id"],))
                     db.commit()
+                    self._send_json(403, {"detail": "Too many failed attempts. Code revoked. Request a new password reset."})
+                    return
+
+                if not secrets.compare_digest(str(otp_row.get("otp_code")), str(otp_code)):
+                    # Atomic SQL decrement
+                    db.execute("UPDATE otps SET attempts_left = attempts_left - 1 WHERE id = ?", (otp_row["id"],))
+                    db.commit()
+                    remaining = current_attempts - 1
                     self._send_json(400, {"detail": f"Incorrect code. {remaining} attempt(s) remaining."})
                     return
 
