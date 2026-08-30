@@ -378,11 +378,10 @@ def clear_session():
 # 🚀 AUTHENTICATION FLOWS
 # ==========================================
 def register_flow() -> bool:
-    # FIXED BANNER (Exact 56-width border alignment):
-print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
-print(f"║              {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                  ║")
-print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
-print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
+    print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
+    print(f"║               {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                 ║")
+    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
+    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     username = live_username_input("Enter Desired Username: ", check_mode="must_be_available")
     if username == "BACK":
@@ -483,10 +482,10 @@ def login_flow() -> bool:
 
 
 def forgot_password_flow():
-    print(f"\n{C.PURPLE}═══════════════════════════════════════════════════════")
-    print(f"         {C.BOLD}{C.WHITE}YOSAN CLOUD — PASSWORD RECOVERY{C.RESET}{C.PURPLE}")
-    print(f"         {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}")
-    print(f"═══════════════════════════════════════════════════════{C.RESET}")
+    print(f"\n{C.PURPLE}╔════════════════════════════════════════════════════════╗")
+    print(f"║            {C.BOLD}{C.WHITE}YOSAN CLOUD — PASSWORD RECOVERY{C.RESET}{C.PURPLE}             ║")
+    print(f"║             {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}              ║")
+    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     username = live_username_input("Enter Username: ", check_mode="must_exist")
     if username == "BACK":
@@ -540,10 +539,10 @@ def forgot_password_flow():
 
 
 def forgot_username_flow():
-    print(f"\n{C.PURPLE}═══════════════════════════════════════════════════════")
-    print(f"         {C.BOLD}{C.WHITE}YOSAN CLOUD — USERNAME RECOVERY{C.RESET}{C.PURPLE}")
-    print(f"         {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}")
-    print(f"═══════════════════════════════════════════════════════{C.RESET}")
+    print(f"\n{C.PURPLE}╔════════════════════════════════════════════════════════╗")
+    print(f"║            {C.BOLD}{C.WHITE}YOSAN CLOUD — USERNAME RECOVERY{C.RESET}{C.PURPLE}             ║")
+    print(f"║             {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}              ║")
+    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     email = live_email_input("Enter Registered Email Address: ", check_mode="must_exist")
     if email == "BACK":
@@ -710,7 +709,7 @@ def require_login() -> bool:
 
     while True:
         print(f"\n{C.CYAN}╔════════════════════════════════════════════════╗")
-        print(f"║      {C.BOLD}{C.WHITE}YOSAN CLOUD ACCESS — AUTHENTICATION{C.RESET}{C.CYAN}        ║")
+        print(f"║      {C.BOLD}{C.WHITE}YOSAN CLOUD ACCESS — AUTHENTICATION{C.RESET}{C.CYAN}       ║")
         print(f"╚════════════════════════════════════════════════╝{C.RESET}")
         print(f"  {C.CYAN}[1]{C.RESET} Log In")
         print(f"  {C.CYAN}[2]{C.RESET} Sign Up {C.GRAY}(New Account + Email OTP){C.RESET}")
