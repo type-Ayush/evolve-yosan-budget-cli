@@ -93,12 +93,43 @@ def check_cloud_email_status(email_addr: str) -> bool:
     return False
 
 
+def evaluate_password_strength(pw: str) -> tuple[int, str]:
+    """
+    Evaluates password complexity:
+    Returns (score 0-4, formatted live badge string).
+    """
+    if not pw:
+        return 0, ""
+
+    score = 0
+    if len(pw) >= 8:
+        score += 1
+    if re.search(r"[A-Z]", pw):
+        score += 1
+    if re.search(r"[0-9]", pw):
+        score += 1
+    if re.search(r"[!@#$%^&*(),.?\":{}|<>_\-+=\[\]\\/]", pw):
+        score += 1
+
+    if len(pw) < 8 or score <= 1:
+        badge = f" {C.RED}🔴 [Weak: 8+ chars required]{C.RESET}"
+    elif score == 2:
+        badge = f" {C.YELLOW}🟡 [Fair: Add Uppercase/Digit/Symbol]{C.RESET}"
+    elif score == 3:
+        badge = f" {C.YELLOW}🟡 [Moderate: Add Missing Requirement]{C.RESET}"
+    else:
+        badge = f" {C.GREEN}🟢 [Strong Password]{C.RESET}"
+
+    return score, badge
+
+
 # ==========================================
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
-def masked_password_input(prompt: str, match_against: str = None) -> str:
+def masked_password_input(prompt: str, match_against: str = None, check_strength: bool = False) -> str:
     """
     Captures password keystroke-by-keystroke rendering '*' in real-time.
+    If check_strength=True, renders live strength indicator (Weak/Moderate/Strong).
     If match_against is provided, dynamically shows ✔ [Match] or ✖ [Mismatch] live badge.
     """
     colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
@@ -117,6 +148,19 @@ def masked_password_input(prompt: str, match_against: str = None) -> str:
             if current_text.lower() in ["b", "back"]:
                 sys.stdout.write("\n")
                 return "BACK"
+
+            if check_strength:
+                score, _ = evaluate_password_strength(current_text)
+                if score < 4:
+                    print(f"\n  {C.RED}└─ ❌ Password must have at least 8 chars, 1 uppercase, 1 digit, and 1 special symbol.{C.GRAY} (Type 'b' to cancel){C.RESET}")
+                    buffer = []
+                    sys.stdout.write(f"\r{colored_prompt}\033[K")
+                    sys.stdout.flush()
+                    continue
+                else:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    return current_text
 
             if match_against is not None:
                 if current_text == match_against:
@@ -145,16 +189,17 @@ def masked_password_input(prompt: str, match_against: str = None) -> str:
         elif ch.isprintable():
             buffer.append(ch)
 
-        # Re-render line with real-time match badge
+        # Dynamic real-time badge updates
         current_text = "".join(buffer)
         badge = ""
-        if match_against is not None and current_text:
-            if current_text.lower() in ["b", "back"]:
-                badge = ""
-            elif current_text == match_against:
-                badge = f" {C.GREEN}✔ [Match]{C.RESET}"
-            else:
-                badge = f" {C.RED}✖ [Mismatch]{C.RESET}"
+        if current_text.lower() not in ["b", "back"]:
+            if check_strength:
+                _, badge = evaluate_password_strength(current_text)
+            elif match_against is not None and current_text:
+                if current_text == match_against:
+                    badge = f" {C.GREEN}✔ [Match]{C.RESET}"
+                else:
+                    badge = f" {C.RED}✖ [Mismatch]{C.RESET}"
 
         sys.stdout.write(f"\r{colored_prompt}{'*' * len(buffer)}{badge}\033[K")
         sys.stdout.flush()
@@ -186,7 +231,6 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
             else:
-                # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
                 interrupted = False
                 for frame in frames:
@@ -232,7 +276,6 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
                         badge = f"{C.GREEN}✔ [Available]{C.RESET}" if not exists else f"{C.RED}✖ [Taken]{C.RESET}"
                     checked_str = current_text
 
-                # Pin badge permanently and move down
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
                 sys.stdout.flush()
 
@@ -305,7 +348,6 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
             else:
-                # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
                 interrupted = False
                 for frame in frames:
@@ -351,7 +393,6 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                         badge = f"{C.GREEN}✔ [Found]{C.RESET}" if exists else f"{C.RED}✖ [Not Registered]{C.RESET}"
                     checked_str = current_text
 
-                # Pin badge permanently and move down
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {badge}\033[K\n")
                 sys.stdout.flush()
 
@@ -421,7 +462,6 @@ def save_session(token: str, username: str):
 
 
 def clear_session():
-    """Revokes the token on the cloud server and deletes the local session file."""
     token = get_token()
     if token:
         try:
@@ -458,15 +498,14 @@ def register_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
+    print(f"\n {C.GRAY}Password requirements:{C.RESET}")
+    print(f" {C.GRAY}• Min 8 characters | 1 Uppercase (A-Z) | 1 Digit (0-9) | 1 Symbol{C.RESET}\n")
+
     while True:
-        password = masked_password_input("Enter Password: ")
+        password = masked_password_input("Enter Password: ", check_strength=True)
         if password == "BACK":
             print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
             return False
-
-        if len(password) < 6:
-            print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.GRAY} (Type 'b' to go back){C.RESET}")
-            continue
 
         confirm_pw = masked_password_input("Confirm Password: ", match_against=password)
         if confirm_pw == "BACK":
@@ -590,13 +629,9 @@ def forgot_password_flow():
             if otp in ["b", "back"]:
                 return
 
-            new_pw = masked_password_input("Enter New Password: ")
+            new_pw = masked_password_input("Enter New Password: ", check_strength=True)
             if new_pw == "BACK":
                 return
-
-            if len(new_pw) < 6:
-                print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.RESET}")
-                continue
 
             confirm_pw = masked_password_input("Confirm New Password: ", match_against=new_pw)
             if confirm_pw == "BACK":
@@ -758,12 +793,8 @@ def show_profile_view():
             if old_pw == "BACK":
                 continue
 
-            new_pw = masked_password_input("Enter new password: ")
+            new_pw = masked_password_input("Enter new password: ", check_strength=True)
             if new_pw == "BACK":
-                continue
-
-            if len(new_pw) < 6:
-                print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.RESET}")
                 continue
 
             confirm_pw = masked_password_input("Confirm new password: ", match_against=new_pw)
