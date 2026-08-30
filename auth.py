@@ -378,10 +378,11 @@ def clear_session():
 # 🚀 AUTHENTICATION FLOWS
 # ==========================================
 def register_flow() -> bool:
-    print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
-    print(f"║                {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                ║")
-    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
-    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
+    # FIXED BANNER (Exact 56-width border alignment):
+print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
+print(f"║              {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                  ║")
+print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
+print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     username = live_username_input("Enter Desired Username: ", check_mode="must_be_available")
     if username == "BACK":
