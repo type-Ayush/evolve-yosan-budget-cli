@@ -1,6 +1,5 @@
 from datetime import datetime
 import gc
-import getpass
 import itertools
 import json
 import msvcrt
@@ -97,6 +96,32 @@ def check_cloud_email_status(email_addr: str) -> bool:
 # ==========================================
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
+def masked_password_input(prompt: str) -> str:
+    """Captures password keystroke-by-keystroke rendering '*' in real-time."""
+    colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
+    sys.stdout.write(colored_prompt)
+    sys.stdout.flush()
+    buffer = []
+
+    while True:
+        ch = msvcrt.getwch()
+        if ch in ("\r", "\n"):
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return "".join(buffer)
+        elif ch in ("\x08", "\b"):
+            if buffer:
+                buffer.pop()
+                sys.stdout.write("\b \b")
+                sys.stdout.flush()
+        elif ch == "\x03":
+            sys.exit(0)
+        elif ch.isprintable():
+            buffer.append(ch)
+            sys.stdout.write("*")
+            sys.stdout.flush()
+
+
 def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
     buffer = []
     last_keystroke_time = time.time()
@@ -236,7 +261,6 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
             elif "@" not in current_text or "." not in current_text.split("@")[-1] or len(current_text.split("@")[-1].split(".")[-1]) < 2:
-                # Still typing incomplete email
                 checked_str = current_text
                 sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET}\033[K")
                 sys.stdout.flush()
@@ -275,7 +299,6 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
                     sys.stdout.write("\n")
                     return "BACK"
 
-                # Check on Enter
                 if checked_str != current_text:
                     exists = check_cloud_email_status(current_text)
                     if check_mode == "must_be_available":
@@ -379,8 +402,8 @@ def clear_session():
 # ==========================================
 def register_flow() -> bool:
     print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
-    print(f"║               {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                 ║")
-    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
+    print(f"║              {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                  ║")
+    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}      ║")
     print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
 
     username = live_username_input("Enter Desired Username: ", check_mode="must_be_available")
@@ -393,12 +416,12 @@ def register_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    password = getpass.getpass(f"{C.CYAN}Enter Password: {C.RESET}")
+    password = masked_password_input("Enter Password: ")
     if password in ["b", "back"]:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    confirm_pw = getpass.getpass(f"{C.CYAN}Confirm Password: {C.RESET}")
+    confirm_pw = masked_password_input("Confirm Password: ")
     if confirm_pw in ["b", "back"]:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
@@ -452,7 +475,7 @@ def login_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    password = getpass.getpass(f"{C.CYAN}Password: {C.RESET}")
+    password = masked_password_input("Password: ")
     if password in ["b", "back"]:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
@@ -514,11 +537,11 @@ def forgot_password_flow():
         if otp in ["b", "back"]:
             return
 
-        new_pw = getpass.getpass(f"{C.CYAN}Enter New Password: {C.RESET}")
+        new_pw = masked_password_input("Enter New Password: ")
         if new_pw in ["b", "back"]:
             return
 
-        confirm_pw = getpass.getpass(f"{C.CYAN}Confirm New Password: {C.RESET}")
+        confirm_pw = masked_password_input("Confirm New Password: ")
         if new_pw != confirm_pw:
             print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
             return
@@ -582,7 +605,7 @@ def delete_account_flow():
         print(f"{C.GRAY}❌ Deletion canceled.{C.RESET}\n")
         return
 
-    password = getpass.getpass("Enter your current password to confirm: ")
+    password = masked_password_input("Enter your current password to confirm: ")
     if password.lower() in ["b", "back"]:
         print(f"{C.GRAY}❌ Deletion canceled.{C.RESET}\n")
         return
@@ -667,13 +690,13 @@ def show_profile_view():
         choice = input(f"{C.CYAN}Select an option (1-4) [Default 4]: {C.RESET}").strip()
 
         if choice == "1":
-            old_pw = getpass.getpass("Enter current password: ")
+            old_pw = masked_password_input("Enter current password: ")
             if old_pw.lower() in ["b", "back"]:
                 continue
-            new_pw = getpass.getpass("Enter new password: ")
+            new_pw = masked_password_input("Enter new password: ")
             if new_pw.lower() in ["b", "back"]:
                 continue
-            confirm_pw = getpass.getpass("Confirm new password: ")
+            confirm_pw = masked_password_input("Confirm new password: ")
 
             if new_pw != confirm_pw:
                 print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
