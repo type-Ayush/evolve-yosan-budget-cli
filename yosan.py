@@ -736,6 +736,7 @@ def generate_jujutsu_manual():
 
     commands = [
         ("yosan", "Displays the live Remaining Budget breakdown and status of the current active month."),
+        ("yosan -t, --transactions", "Prints itemized transaction and top-up log for the current or specified month."),
         ("yosan switch [flag]", "Enters continuous entry mode for a category branch. Type 'yosan -juubun' to exit."),
         ("yosan switch [flag] -d \"...\" -val X", "One-line quick entry to log an expense directly to cloud/local ledger."),
         ("yosan -u [flag] [amt] -d \"...\"", "Credits / Adds money to a branch budget and increases overall monthly allowance."),
@@ -745,7 +746,7 @@ def generate_jujutsu_manual():
         ("yosan -report [code]", "Exports formatted Text and styled A4 PDF financial statements for any month."),
         ("yosan -jujutsu", "Generates and opens this Command Manual PDF documentation (Accessible logged out)."),
         ("yosan peek", "Lists all historical budget cycles stored in the active user database."),
-        ("yosan peek -d [MMYYYY]", "Inspects read-only ledger and transaction history of a specific historical month."),
+        ("yosan peek -d [MMYYYY]", "Inspects read-only ledger and status breakdown of a specific historical month."),
         ("yosan -s", "Displays total expenditure summary across all branch categories."),
         ("yosan -o", "Syncs SQLite records and launches the user-specific budget book in Excel."),
         ("yosan -logout", "Clears the active cloud token session and requires re-authentication."),
@@ -801,7 +802,7 @@ def generate_jujutsu_manual():
         Paragraph(
             "• <b>New Budget Wizard ('yosan -new')</b>: Supports non-destructive step navigation. Enter <b>'p'</b> or <b>'prev'</b> to return to previous steps or <b>'b'</b> / <b>'cancel'</b> to abort.<br/>"
             "• <b>Continuous Logging ('yosan switch -m')</b>: Enter sequential descriptions and amounts continuously. Type <b>'yosan -juubun'</b> or <b>'exit'</b> to finish.<br/>"
-            "• <b>Real-Time Live Debouncing</b>: During login/signup, the system verifies cloud records automatically with a 1s debounce, marking valid accounts with <b>[✔]</b> without manual submission.",
+            "• <b>Transaction Log ('yosan -t')</b>: View all itemized expenses and top-up credits cleanly isolated on demand.",
             subtitle_style,
         )
     )
@@ -918,7 +919,7 @@ def create_new_budget():
                 return
 
             try:
-                income_val = float(raw_input.replace(",", ""))
+                income_val = float(raw_input.replace(",", "").replace("₹", ""))
                 if income_val <= 0:
                     print(f"{C.RED}❌ Total budget must be greater than 0.{C.RESET}")
                     continue
@@ -1273,7 +1274,7 @@ def print_remaining_balance():
         return
 
     title_text = f"REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]"
-    box_width = 83
+    box_width = 83  # Symmetrical 85 chars total frame
 
     t_spaces = max(0, box_width - len(title_text))
     t_l = t_spaces // 2
@@ -1284,7 +1285,7 @@ def print_remaining_balance():
     print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
     print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
-    print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1342,7 +1343,7 @@ def print_remaining_balance():
                 f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
             )
 
-        print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
         total_rem = grand_alloc - grand_spent
         tb_str = f"₹{grand_base:>10.2f}"
         tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
@@ -1358,7 +1359,50 @@ def print_remaining_balance():
             f"{C.RED}{ts_str}{C.RESET} | "
             f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
         )
-        print(f"{C.CYAN}═══════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+        print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+
+
+def show_transaction_ledger(month_code: str = None):
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if month_code:
+            cursor.execute("SELECT * FROM months WHERE month_code = ?", (month_code,))
+            target_m = cursor.fetchone()
+        else:
+            target_m = get_active_month()
+
+    if not target_m:
+        print(f"\n{C.RED}❌ No active budget found. Run 'yosan -new' or provide a month code.{C.RESET}\n")
+        return
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT timestamp, 'Expense' AS type, branch, description, amount FROM transactions WHERE month_id = ?
+            UNION ALL
+            SELECT timestamp, 'Credit' AS type, branch, description, amount FROM topups WHERE month_id = ?
+            ORDER BY timestamp ASC
+            """,
+            (target_m["id"], target_m["id"]),
+        )
+        tx_list = cursor.fetchall()
+
+    print(f"\n{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
+    print(f"  {C.BOLD}TRANSACTION LEDGER: {target_m['month_name'].upper()} [{target_m['month_code']}]{C.RESET}")
+    print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
+
+    if not tx_list:
+        print(f"\n{C.GRAY}  ℹ️  No transactions recorded for this month.{C.RESET}\n")
+        return
+
+    for idx, tx in enumerate(tx_list, start=1):
+        amt_str = f"{C.GREEN}+₹{tx['amount']:>9.2f}{C.RESET}" if tx["type"] == "Credit" else f"{C.RED}₹{tx['amount']:>9.2f}{C.RESET}"
+        cat_color = CATEGORY_ANSI.get(tx["branch"], C.WHITE)
+        print(f"  {C.GRAY}{idx:>2}.{C.RESET} [{C.GRAY}{tx['timestamp']}{C.RESET}] [{C.BOLD}{tx['type']:<7}{C.RESET}] [{cat_color}{tx['branch']:<12}{C.RESET}] {tx['description']:<30} -> {amt_str}")
+
+    print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
 
 
 def print_summary():
@@ -1404,7 +1448,7 @@ def peek_month_budget(month_code: str):
         return
 
     active_tag = f" {C.GREEN}(CURRENT ACTIVE){C.RESET}" if target_m["is_active"] == 1 else f" {C.YELLOW}(ARCHIVED - READ ONLY){C.RESET}"
-    title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name']} [{month_code}]"
+    title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name'].upper()} [{month_code}]"
     box_width = 83
 
     t_spaces = max(0, box_width - len(title_text))
@@ -1416,7 +1460,7 @@ def peek_month_budget(month_code: str):
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
     print(f"Status: {active_tag}")
     print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
-    print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1474,7 +1518,7 @@ def peek_month_budget(month_code: str):
                 f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
             )
 
-        print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
         total_rem = grand_alloc - grand_spent
         tb_str = f"₹{grand_base:>10.2f}"
         tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
@@ -1490,27 +1534,7 @@ def peek_month_budget(month_code: str):
             f"{C.RED}{ts_str}{C.RESET} | "
             f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
         )
-        print(f"{C.CYAN}═══════════════════════════════════════════════════════════════════════════════════{C.RESET}")
-
-        cursor.execute(
-            """
-            SELECT timestamp, 'Expense' AS type, branch, description, amount FROM transactions WHERE month_id = ?
-            UNION ALL
-            SELECT timestamp, 'Credit' AS type, branch, description, amount FROM topups WHERE month_id = ?
-            ORDER BY timestamp ASC
-            """,
-            (target_m["id"], target_m["id"]),
-        )
-        tx_list = cursor.fetchall()
-        if tx_list:
-            print(f"\n{C.CYAN}--- Itemized Transaction Log ({len(tx_list)} entries) ---{C.RESET}")
-            for idx, tx in enumerate(tx_list, start=1):
-                amt_str = f"{C.GREEN}+₹{tx['amount']:.2f}{C.RESET}" if tx["type"] == "Credit" else f"{C.RED}₹{tx['amount']:.2f}{C.RESET}"
-                cat_color = CATEGORY_ANSI.get(tx["branch"], C.WHITE)
-                print(f" {C.GRAY}{idx:>2}.{C.RESET} [{C.GRAY}{tx['timestamp']}{C.RESET}] [{C.BOLD}{tx['type']:<7}{C.RESET}] [{cat_color}{tx['branch']:<11}{C.RESET}] {tx['description']} -> {amt_str}")
-            print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}\n")
-        else:
-            print(f"\n{C.GRAY}ℹ️  No transactions recorded for this month.{C.RESET}\n")
+        print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
 
 
 def list_all_available_months():
@@ -1579,6 +1603,16 @@ def main():
         return
 
     init_db()
+
+    # Route: yosan -t [optional_month_code]
+    if "-t" in sys.argv or "--transactions" in sys.argv:
+        target_code = None
+        for arg in sys.argv[1:]:
+            if arg not in ["-t", "--transactions"]:
+                target_code = arg
+                break
+        show_transaction_ledger(target_code)
+        return
 
     if "-report" in sys.argv or "--report" in sys.argv:
         target_code = None
@@ -1651,6 +1685,7 @@ def main():
     parser.add_argument("-burn", "--burn", action="store_true", help="Burn in / finalize the active budget to read-only")
     parser.add_argument("-jujutsu", "--jujutsu", action="store_true", help="Generate Command Reference Manual PDF")
     parser.add_argument("-s", "--summary", action="store_true", help="View sum total balance spent")
+    parser.add_argument("-t", "--transactions", action="store_true", help="View itemized transaction log")
     parser.add_argument("-sh", "--show-remaining", action="store_true", help="View remaining branch allowance")
     parser.add_argument("-o", "--open", action="store_true", help="Open budget book in Excel")
     parser.add_argument("-p", "--profile", action="store_true", help="View profile and account settings")
@@ -1697,6 +1732,10 @@ def main():
 
     if args.new:
         create_new_budget()
+        return
+
+    if args.transactions:
+        show_transaction_ledger()
         return
 
     if args.show_remaining:
