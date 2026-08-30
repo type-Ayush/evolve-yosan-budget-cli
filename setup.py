@@ -3,14 +3,11 @@ from setuptools import setup, find_packages
 setup(
     name="yosan",
     version="1.0.0",
-    description="Yosan Cloud Budget Management CLI",
-    py_modules=["yosan", "auth", "server"],
-    packages=find_packages(),
+    py_modules=["yosan", "auth"],
     install_requires=[
-        "requests",
-        "openpyxl",
-        "reportlab",
-        "libsql-client"
+        "openpyxl>=3.1.0",
+        "reportlab>=4.0.0",
+        "requests>=2.28.0",
     ],
     entry_points={
         "console_scripts": [
