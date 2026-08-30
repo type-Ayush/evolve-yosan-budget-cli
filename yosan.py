@@ -1103,7 +1103,9 @@ def create_new_budget():
 
                 sync_to_excel()
                 print(f"\n{C.GREEN}{C.BOLD}🎉 Budget for {month_display} is locked in and active!{C.RESET}\n")
+                print_remaining_balance()
                 return
+
 
 def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = None):
     init_db()
@@ -1228,7 +1230,7 @@ def continuous_interactive_entry(cat_name: str):
                 print(f"\n{C.GREEN}✅ Finished session for [{cat_name}]. (Juubun / 充分){C.RESET}")
                 return
             try:
-                amount = float(amount_str)
+                amount = float(amount_str.replace(",", ""))
                 if amount <= 0:
                     print(f"{C.RED}Amount must be greater than 0.{C.RESET}")
                     continue
@@ -1262,12 +1264,19 @@ def print_remaining_balance():
         peek_month_budget(latest_m["month_code"])
         return
 
+    title_text = f"REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]"
+    box_width = 83
+
+    t_spaces = max(0, box_width - len(title_text))
+    t_l = t_spaces // 2
+    t_r = t_spaces - t_l
+
     print(f"\nHi {C.CYAN}{C.BOLD}{username}{C.RESET}!")
-    print(f"{C.CYAN}╔══════════════════════════════════════════════════════════════════════════════════╗{C.RESET}")
-    print(f"{C.CYAN}║{C.RESET}        {C.BOLD}{C.WHITE}REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]{C.RESET}        {C.CYAN}║{C.RESET}")
-    print(f"{C.CYAN}╚══════════════════════════════════════════════════════════════════════════════════╝{C.RESET}")
-    print(f"{C.BOLD}{'Branch':<13} | {'Base':>10} | {'Credited':>9} | {'Total Alloc':>11} | {'Spent':>10} | {'Remaining':>11}{C.RESET}")
-    print(f"{C.GRAY}──────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    print(f"{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
+    print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
+    print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1310,23 +1319,38 @@ def print_remaining_balance():
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            if remaining >= 0:
-                rem_status = f"{C.GREEN}₹{remaining:>9.2f}{C.RESET}"
-            else:
-                rem_status = f"{C.RED}-₹{abs(remaining):>8.2f}!{C.RESET}"
+            base_str = f"₹{base_amt:>10.2f}"
+            credit_str = f"+₹{credit_amt:>8.2f}" if credit_amt > 0 else f"₹{credit_amt:>8.2f}"
+            alloc_str = f"₹{alloc_amt:>12.2f}"
+            spent_str = f"₹{cat_spent:>10.2f}"
+            rem_str = f"₹{remaining:>11.2f}" if remaining >= 0 else f"-₹{abs(remaining):>10.2f}"
 
-            credit_str = f"{C.GREEN}+₹{credit_amt:>7.2f}{C.RESET}" if credit_amt > 0 else f"{C.GRAY}   ₹0.00{C.RESET}"
-            print(f"{cat_color}{cat_name:<13}{C.RESET} | ₹{base_amt:>9.2f} | {credit_str} | ₹{alloc_amt:>10.2f} | {C.RED}₹{cat_spent:>9.2f}{C.RESET} | {rem_status}")
+            print(
+                f"{cat_color}{cat_name:<13}{C.RESET} | "
+                f"{C.WHITE}{base_str}{C.RESET} | "
+                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str}{C.RESET} | "
+                f"{C.CYAN}{alloc_str}{C.RESET} | "
+                f"{C.RED}{spent_str}{C.RESET} | "
+                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
+            )
 
-        print(f"{C.GRAY}──────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        if total_rem >= 0:
-            rem_grand = f"{C.GREEN}{C.BOLD}₹{total_rem:>9.2f}{C.RESET}"
-        else:
-            rem_grand = f"{C.RED}{C.BOLD}-₹{abs(total_rem):>8.2f}!{C.RESET}"
+        tb_str = f"₹{grand_base:>10.2f}"
+        tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
+        ta_str = f"₹{grand_alloc:>12.2f}"
+        ts_str = f"₹{grand_spent:>10.2f}"
+        tr_str = f"₹{total_rem:>11.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):>10.2f}"
 
-        print(f"{C.BOLD}{'TOTAL':<13}{C.RESET} | {C.YELLOW}₹{grand_base:>9.2f}{C.RESET} | {C.GREEN}+₹{grand_credit:>7.2f}{C.RESET} | {C.CYAN}₹{grand_alloc:>10.2f}{C.RESET} | {C.RED}₹{grand_spent:>9.2f}{C.RESET} | {rem_grand}")
-        print(f"{C.CYAN}══════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+        print(
+            f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
+            f"{C.YELLOW}{tb_str}{C.RESET} | "
+            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str}{C.RESET} | "
+            f"{C.CYAN}{ta_str}{C.RESET} | "
+            f"{C.RED}{ts_str}{C.RESET} | "
+            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
+        )
+        print(f"{C.CYAN}═══════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
 
 
 def print_summary():
@@ -1372,11 +1396,19 @@ def peek_month_budget(month_code: str):
         return
 
     active_tag = f" {C.GREEN}(CURRENT ACTIVE){C.RESET}" if target_m["is_active"] == 1 else f" {C.YELLOW}(ARCHIVED - READ ONLY){C.RESET}"
-    print(f"\n{C.CYAN}╔══════════════════════════════════════════════════════════════════════════════════╗{C.RESET}")
-    print(f"{C.CYAN}║{C.RESET}       {C.BOLD}{C.WHITE}PEEK HISTORICAL BUDGET: {target_m['month_name']} [{month_code}]{C.RESET}{active_tag}        {C.CYAN}║{C.RESET}")
-    print(f"{C.CYAN}╚══════════════════════════════════════════════════════════════════════════════════╝{C.RESET}")
-    print(f"{C.BOLD}{'Branch':<13} | {'Base':>10} | {'Credited':>9} | {'Total Alloc':>11} | {'Spent':>10} | {'Remaining':>11}{C.RESET}")
-    print(f"{C.GRAY}──────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name']} [{month_code}]"
+    box_width = 83
+
+    t_spaces = max(0, box_width - len(title_text))
+    t_l = t_spaces // 2
+    t_r = t_spaces - t_l
+
+    print(f"\n{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
+    print(f"Status: {active_tag}")
+    print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
+    print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1419,23 +1451,38 @@ def peek_month_budget(month_code: str):
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            if remaining >= 0:
-                rem_status = f"{C.GREEN}₹{remaining:>9.2f}{C.RESET}"
-            else:
-                rem_status = f"{C.RED}-₹{abs(remaining):>8.2f}!{C.RESET}"
+            base_str = f"₹{base_amt:>10.2f}"
+            credit_str = f"+₹{credit_amt:>8.2f}" if credit_amt > 0 else f"₹{credit_amt:>8.2f}"
+            alloc_str = f"₹{alloc_amt:>12.2f}"
+            spent_str = f"₹{cat_spent:>10.2f}"
+            rem_str = f"₹{remaining:>11.2f}" if remaining >= 0 else f"-₹{abs(remaining):>10.2f}"
 
-            credit_str = f"{C.GREEN}+₹{credit_amt:>7.2f}{C.RESET}" if credit_amt > 0 else f"{C.GRAY}   ₹0.00{C.RESET}"
-            print(f"{cat_color}{cat_name:<13}{C.RESET} | ₹{base_amt:>9.2f} | {credit_str} | ₹{alloc_amt:>10.2f} | {C.RED}₹{cat_spent:>9.2f}{C.RESET} | {rem_status}")
+            print(
+                f"{cat_color}{cat_name:<13}{C.RESET} | "
+                f"{C.WHITE}{base_str}{C.RESET} | "
+                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str}{C.RESET} | "
+                f"{C.CYAN}{alloc_str}{C.RESET} | "
+                f"{C.RED}{spent_str}{C.RESET} | "
+                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
+            )
 
-        print(f"{C.GRAY}──────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        if total_rem >= 0:
-            rem_grand = f"{C.GREEN}{C.BOLD}₹{total_rem:>9.2f}{C.RESET}"
-        else:
-            rem_grand = f"{C.RED}{C.BOLD}-₹{abs(total_rem):>8.2f}!{C.RESET}"
+        tb_str = f"₹{grand_base:>10.2f}"
+        tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
+        ta_str = f"₹{grand_alloc:>12.2f}"
+        ts_str = f"₹{grand_spent:>10.2f}"
+        tr_str = f"₹{total_rem:>11.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):>10.2f}"
 
-        print(f"{C.BOLD}{'TOTAL':<13}{C.RESET} | {C.YELLOW}₹{grand_base:>9.2f}{C.RESET} | {C.GREEN}+₹{grand_credit:>7.2f}{C.RESET} | {C.CYAN}₹{grand_alloc:>10.2f}{C.RESET} | {C.RED}₹{grand_spent:>9.2f}{C.RESET} | {rem_grand}")
-        print(f"{C.CYAN}══════════════════════════════════════════════════════════════════════════════════{C.RESET}")
+        print(
+            f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
+            f"{C.YELLOW}{tb_str}{C.RESET} | "
+            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str}{C.RESET} | "
+            f"{C.CYAN}{ta_str}{C.RESET} | "
+            f"{C.RED}{ts_str}{C.RESET} | "
+            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
+        )
+        print(f"{C.CYAN}═══════════════════════════════════════════════════════════════════════════════════{C.RESET}")
 
         cursor.execute(
             """
@@ -1453,7 +1500,7 @@ def peek_month_budget(month_code: str):
                 amt_str = f"{C.GREEN}+₹{tx['amount']:.2f}{C.RESET}" if tx["type"] == "Credit" else f"{C.RED}₹{tx['amount']:.2f}{C.RESET}"
                 cat_color = CATEGORY_ANSI.get(tx["branch"], C.WHITE)
                 print(f" {C.GRAY}{idx:>2}.{C.RESET} [{C.GRAY}{tx['timestamp']}{C.RESET}] [{C.BOLD}{tx['type']:<7}{C.RESET}] [{cat_color}{tx['branch']:<11}{C.RESET}] {tx['description']} -> {amt_str}")
-            print(f"{C.GRAY}──────────────────────────────────────────────────────────────────────────────────{C.RESET}\n")
+            print(f"{C.GRAY}───────────────────────────────────────────────────────────────────────────────────{C.RESET}\n")
         else:
             print(f"\n{C.GRAY}ℹ️  No transactions recorded for this month.{C.RESET}\n")
 
@@ -1572,7 +1619,7 @@ def main():
                 "-a", "--accessories", "-v", "--savings", "-d", desc_val,
             ]:
                 try:
-                    amount_val = float(arg)
+                    amount_val = float(arg.replace(",", ""))
                     break
                 except ValueError:
                     pass
