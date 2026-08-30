@@ -1,16 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "yosan"
 version = "1.0.1"
 description = "Terminal Budgeting and Financial Ledger CLI Engine"
-readme = "README.md"
+authors = [{ name = "Ayush Jain" }]
 requires-python = ">=3.8"
-authors = [
-    { name = "Ayush Jain" }
-]
 dependencies = [
     "openpyxl>=3.1.0",
     "reportlab>=4.0.0",
@@ -19,3 +16,6 @@ dependencies = [
 
 [project.scripts]
 yosan = "yosan:main"
+
+[tool.setuptools]
+py-modules = ["yosan", "auth", "server"]
