@@ -65,7 +65,6 @@ class DatabaseSession:
             rows = self.cursor.fetchall()
             return [dict(row) for row in rows] if rows else []
 
-        # Execute on Turso via HTTP Pipeline
         args = []
         for p in params:
             if p is None:
@@ -112,7 +111,6 @@ class DatabaseSession:
 def init_cloud_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with DatabaseSession() as db:
-        # 1. Users Table
         db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,7 +125,6 @@ def init_cloud_db():
             )
         """)
 
-        # 2. Hardened OTP Table
         db.execute("""
             CREATE TABLE IF NOT EXISTS otps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,7 +137,6 @@ def init_cloud_db():
             )
         """)
 
-        # 3. Security Audit & Rate Limiting Table
         db.execute("""
             CREATE TABLE IF NOT EXISTS login_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +147,6 @@ def init_cloud_db():
             )
         """)
 
-        # 4. Multi-Tenant Budget Cycles
         db.execute("""
             CREATE TABLE IF NOT EXISTS cycles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,7 +161,6 @@ def init_cloud_db():
             )
         """)
 
-        # 5. Multi-Tenant Transactions
         db.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,8 +185,22 @@ init_cloud_db()
 # 🔒 SECURITY & VALIDATION UTILITIES
 # ==========================================
 def is_valid_email_syntax(email_addr: str) -> bool:
-    """Fast, reliable regex syntax check for email formatting."""
     return bool(re.match(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$", email_addr))
+
+
+def validate_password_strength(pw: str) -> tuple[bool, str]:
+    """Strict backend verification of password complexity."""
+    if len(pw) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", pw):
+        return False, "Password must contain at least one uppercase letter (A-Z)."
+    if not re.search(r"[a-z]", pw):
+        return False, "Password must contain at least one lowercase letter (a-z)."
+    if not re.search(r"[0-9]", pw):
+        return False, "Password must contain at least one number (0-9)."
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>_\-+=\[\]\\/]", pw):
+        return False, "Password must contain at least one special character (!@#$%^&*...)."
+    return True, "Strong"
 
 
 def hash_password(password: str, salt: str = None) -> tuple[str, str]:
@@ -258,7 +266,6 @@ def reset_rate_limit(identifier: str, db: DatabaseSession):
 
 
 def send_cloud_email_otp(target_email: str, otp: str, purpose: str) -> bool:
-    """Dispatches OTP email via Brevo HTTPS API."""
     if not BREVO_API_KEY or not BREVO_SENDER_EMAIL:
         print(f"\n⚠️  [DEV MODE] Brevo not configured. Active OTP code for '{purpose}' is: {otp}\n")
         return True
@@ -343,7 +350,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
             return
 
         with DatabaseSession() as db:
-            # 1. Username Availability Check
             if parsed_path == "/api/auth/check-username":
                 params = parse_qs(parsed_url.query)
                 username = params.get("username", [""])[0].strip()
@@ -359,7 +365,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"username": username, "exists": exists})
                 return
 
-            # 2. Email Availability Check (Taken vs Available)
             if parsed_path == "/api/auth/check-email":
                 params = parse_qs(parsed_url.query)
                 email_addr = params.get("email", [""])[0].strip().lower()
@@ -420,8 +425,10 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 if not is_valid_email_syntax(email_addr):
                     self._send_json(400, {"detail": "Invalid email address format"})
                     return
-                if len(password) < 6:
-                    self._send_json(400, {"detail": "Password must be at least 6 characters"})
+
+                is_strong, reason = validate_password_strength(password)
+                if not is_strong:
+                    self._send_json(400, {"detail": reason})
                     return
 
                 # Rate limit OTP creation (1 per 60s)
@@ -466,7 +473,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Verification OTP sent to {email_addr}"})
                 return
 
-            # 2. VERIFY REGISTRATION (With atomic attempts decrement)
+            # 2. VERIFY REGISTRATION
             elif parsed_path == "/api/auth/verify-registration":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
@@ -491,7 +498,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 if not secrets.compare_digest(str(otp_row.get("otp_code")), str(otp_code)):
-                    # Atomic SQL decrement
                     db.execute("UPDATE otps SET attempts_left = attempts_left - 1 WHERE id = ?", (otp_row["id"],))
                     db.commit()
                     remaining = current_attempts - 1
@@ -607,14 +613,15 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"message": f"Password reset OTP sent to {email_addr}"})
                 return
 
-            # 6. RESET PASSWORD (With atomic attempts decrement)
+            # 6. RESET PASSWORD
             elif parsed_path == "/api/auth/reset-password":
                 email_addr = payload.get("email", "").strip().lower()
                 otp_code = payload.get("otp_code", "").strip()
                 new_password = payload.get("new_password", "")
 
-                if len(new_password) < 6:
-                    self._send_json(400, {"detail": "Password must be at least 6 characters."})
+                is_strong, reason = validate_password_strength(new_password)
+                if not is_strong:
+                    self._send_json(400, {"detail": reason})
                     return
 
                 otp_rows = db.execute("""
@@ -637,7 +644,6 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 if not secrets.compare_digest(str(otp_row.get("otp_code")), str(otp_code)):
-                    # Atomic SQL decrement
                     db.execute("UPDATE otps SET attempts_left = attempts_left - 1 WHERE id = ?", (otp_row["id"],))
                     db.commit()
                     remaining = current_attempts - 1
@@ -681,8 +687,9 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"detail": "Current password does not match."})
                     return
 
-                if len(new_pw) < 6:
-                    self._send_json(400, {"detail": "New password must be at least 6 characters."})
+                is_strong, reason = validate_password_strength(new_pw)
+                if not is_strong:
+                    self._send_json(400, {"detail": reason})
                     return
 
                 new_hash, salt = hash_password(new_pw)
