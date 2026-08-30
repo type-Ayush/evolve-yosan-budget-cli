@@ -944,28 +944,48 @@ def create_new_budget():
                 print(f"{C.GRAY}↩ Budget creation canceled.{C.RESET}\n")
                 return
 
+            # --- OPTION 1: PERCENTAGE ALLOCATION (With Auto-Fill on Last Branch) ---
             if choice == "1":
                 print(f"\n{C.GRAY}Enter percentage for each branch (Total must = 100%, 'p'=back):{C.RESET}")
                 ratios = {}
                 tot_p = 0.0
                 step_canceled = False
-                for cat_name in CATEGORIES.values():
+                category_items = list(CATEGORIES.values())
+
+                for idx, cat_name in enumerate(category_items):
                     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
+                    is_last = (idx == len(category_items) - 1)
+                    remaining_p = max(0.0, round(100.0 - tot_p, 2))
+
                     while True:
-                        p_in = input(f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%): ").strip()
+                        if is_last and remaining_p > 0:
+                            prompt_str = f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%): {remaining_p:g} (Auto-filled, Enter to accept): "
+                        else:
+                            prompt_str = f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%): "
+
+                        p_in = input(prompt_str).strip()
+
                         if p_in.lower() in ["p", "prev", "previous", "b", "back"]:
                             step_canceled = True
                             break
-                        try:
-                            p = float(p_in)
-                            if p < 0:
-                                print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+
+                        if is_last and p_in == "":
+                            p = remaining_p
+                        else:
+                            try:
+                                p = float(p_in)
+                            except ValueError:
+                                print(f"    {C.RED}❌ Numeric percentage required.{C.RESET}")
                                 continue
-                            ratios[cat_name] = p
-                            tot_p += p
-                            break
-                        except ValueError:
-                            print(f"    {C.RED}❌ Numeric percentage required.{C.RESET}")
+
+                        if p < 0:
+                            print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+                            continue
+
+                        ratios[cat_name] = p
+                        tot_p += p
+                        break
+
                     if step_canceled:
                         break
 
@@ -981,28 +1001,48 @@ def create_new_budget():
                 else:
                     print(f"{C.RED}❌ Percentages sum to {tot_p:.2f}%, must equal exactly 100%.{C.RESET}")
 
+            # --- OPTION 2: ABSOLUTE AMOUNT ALLOCATION (With Auto-Fill on Last Branch) ---
             elif choice == "2":
                 print(f"\n{C.GRAY}Enter allocated ₹ amount for each branch ('p'=back):{C.RESET}")
                 tot_m = 0.0
                 alloc_map = {}
                 step_canceled = False
-                for cat_name in CATEGORIES.values():
+                category_items = list(CATEGORIES.values())
+
+                for idx, cat_name in enumerate(category_items):
                     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
+                    is_last = (idx == len(category_items) - 1)
+                    remaining_m = max(0.0, round(total_income - tot_m, 2))
+
                     while True:
-                        val_in = input(f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): ").strip()
+                        if is_last and remaining_m > 0:
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): {remaining_m:,.2f} (Auto-filled, Enter to accept): "
+                        else:
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): "
+
+                        val_in = input(prompt_str).strip()
+
                         if val_in.lower() in ["p", "prev", "previous", "b", "back"]:
                             step_canceled = True
                             break
-                        try:
-                            val = float(val_in)
-                            if val < 0:
-                                print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+
+                        if is_last and val_in == "":
+                            val = remaining_m
+                        else:
+                            try:
+                                val = float(val_in.replace(",", ""))
+                            except ValueError:
+                                print(f"    {C.RED}❌ Numeric amount required.{C.RESET}")
                                 continue
-                            alloc_map[cat_name] = val
-                            tot_m += val
-                            break
-                        except ValueError:
-                            print(f"    {C.RED}❌ Numeric amount required.{C.RESET}")
+
+                        if val < 0:
+                            print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+                            continue
+
+                        alloc_map[cat_name] = val
+                        tot_m += val
+                        break
+
                     if step_canceled:
                         break
 
@@ -1013,7 +1053,7 @@ def create_new_budget():
                     branch_allocations = alloc_map
                     step = 4
                 else:
-                    print(f"{C.RED}❌ Sum ₹{tot_m:.2f} does not match total ₹{total_income:.2f}.{C.RESET}")
+                    print(f"{C.RED}❌ Sum ₹{tot_m:,.2f} does not match total ₹{total_income:,.2f}.{C.RESET}")
             else:
                 print(f"{C.RED}❌ Invalid option. Enter 1, 2, p, or b.{C.RESET}")
 
