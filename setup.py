@@ -1,9 +1,9 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name="yosan",
-    version="1.0.0",
-    py_modules=["yosan", "auth"],
+    version="1.0.1",
+    py_modules=["yosan", "auth", "server"],
     install_requires=[
         "openpyxl>=3.1.0",
         "reportlab>=4.0.0",
