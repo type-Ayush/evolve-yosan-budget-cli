@@ -10,7 +10,6 @@ import secrets
 import sqlite3
 import time
 from urllib.parse import parse_qs, urlparse
-import dns.resolver
 import requests
 
 # ==========================================
@@ -28,20 +27,6 @@ TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 PBKDF2_ROUNDS = 600_000
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_SECONDS = 600  # 10 Minutes
-
-# Common throwaway/temporary email provider domains
-DISPOSABLE_DOMAINS = {
-    "tempmail.com",
-    "10minutemail.com",
-    "guerrillamail.com",
-    "mailinator.com",
-    "throwawaymail.com",
-    "yopmail.com",
-    "trashmail.com",
-    "sharklasers.com",
-    "getairmail.com",
-    "dispostable.com",
-}
 
 
 # ==========================================
@@ -205,31 +190,9 @@ init_cloud_db()
 # ==========================================
 # 🔒 SECURITY & VALIDATION UTILITIES
 # ==========================================
-def verify_real_world_email(email_addr: str) -> tuple[bool, str]:
-    """Verifies email syntax, filters burner domains, and queries live MX records."""
-    if not re.match(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$", email_addr):
-        return False, "Invalid email format"
-
-    domain = email_addr.split("@")[1].lower()
-
-    if domain in DISPOSABLE_DOMAINS:
-        return False, "Disposable/temporary emails are not permitted"
-
-    # Query public DNS for mail exchange (MX) records
-    try:
-        resolver = dns.resolver.Resolver()
-        resolver.timeout = 3.0
-        resolver.lifetime = 3.0
-        mx_records = resolver.resolve(domain, "MX")
-        if not mx_records:
-            return False, f"Domain '@{domain}' has no active mail servers"
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.LifetimeTimeout):
-        return False, f"Domain '@{domain}' does not exist or cannot receive mail"
-    except Exception:
-        # Fallback if external DNS query experiences temporary socket timeout
-        pass
-
-    return True, "Valid"
+def is_valid_email_syntax(email_addr: str) -> bool:
+    """Fast, reliable regex syntax check for email formatting."""
+    return bool(re.match(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$", email_addr))
 
 
 def hash_password(password: str, salt: str = None) -> tuple[str, str]:
@@ -380,7 +343,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
             return
 
         with DatabaseSession() as db:
-            # 1. Username Existence Check
+            # 1. Username Availability Check
             if parsed_path == "/api/auth/check-username":
                 params = parse_qs(parsed_url.query)
                 username = params.get("username", [""])[0].strip()
@@ -396,7 +359,7 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"username": username, "exists": exists})
                 return
 
-            # 2. Email Validation & Real-World Existence Check
+            # 2. Email Availability Check (Taken vs Available)
             if parsed_path == "/api/auth/check-email":
                 params = parse_qs(parsed_url.query)
                 email_addr = params.get("email", [""])[0].strip().lower()
@@ -404,36 +367,15 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"detail": "Email parameter required"})
                     return
 
-                # Check registration status in DB
                 rows = db.execute(
                     "SELECT id, is_verified FROM users WHERE LOWER(email) = LOWER(?)",
                     (email_addr,)
                 )
-                if rows and int(rows[0].get("is_verified", 0)) == 1:
-                    self._send_json(200, {
-                        "email": email_addr,
-                        "status": "taken",
-                        "exists": True,
-                        "message": "Already registered"
-                    })
-                    return
-
-                # Check if real-world domain & MX server exist
-                is_real, reason = verify_real_world_email(email_addr)
-                if not is_real:
-                    self._send_json(200, {
-                        "email": email_addr,
-                        "status": "invalid",
-                        "exists": False,
-                        "message": reason
-                    })
-                    return
-
+                exists = bool(rows and int(rows[0].get("is_verified", 0)) == 1)
                 self._send_json(200, {
                     "email": email_addr,
-                    "status": "available",
-                    "exists": False,
-                    "message": "Valid and available"
+                    "exists": exists,
+                    "status": "taken" if exists else "available"
                 })
                 return
 
@@ -475,14 +417,11 @@ class YosanAPIHandler(BaseHTTPRequestHandler):
                 if not username or not email_addr or not password:
                     self._send_json(400, {"detail": "All fields are required"})
                     return
+                if not is_valid_email_syntax(email_addr):
+                    self._send_json(400, {"detail": "Invalid email address format"})
+                    return
                 if len(password) < 6:
                     self._send_json(400, {"detail": "Password must be at least 6 characters"})
-                    return
-
-                # Validate real-world domain validity before dispatching OTP
-                is_real, reason = verify_real_world_email(email_addr)
-                if not is_real:
-                    self._send_json(400, {"detail": f"Invalid email: {reason}"})
                     return
 
                 # Rate limit OTP creation (1 per 60s)
