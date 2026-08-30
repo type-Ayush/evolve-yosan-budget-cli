@@ -65,6 +65,67 @@ CATEGORY_COLORS = {
 
 
 # ==========================================
+# 🌐 LOCALIZATION (i18n) DICTIONARY
+# ==========================================
+I18N = {
+    "en": {
+        "greeting": "Hi",
+        "title": "REMAINING BUDGET BREAKDOWN",
+        "active": "ACTIVE",
+        "branch": "Branch",
+        "base": "Base",
+        "credited": "Credited",
+        "total_alloc": "Total Alloc",
+        "spent": "Spent",
+        "remaining": "Remaining",
+        "total": "TOTAL",
+        "categories": {
+            "Mess Food": "Mess Food",
+            "Clothes": "Clothes",
+            "Accessories": "Accessories",
+            "Savings": "Savings",
+        }
+    },
+    "hi": {
+        "greeting": "नमस्ते",
+        "title": "बचे हुए बजट का विवरण",
+        "active": "सक्रिय",
+        "branch": "शाखा",
+        "base": "मूल बजट",
+        "credited": "जमा राशि",
+        "total_alloc": "कुल आवंटित",
+        "spent": "खर्च",
+        "remaining": "शेष राशि",
+        "total": "कुल योग",
+        "categories": {
+            "Mess Food": "मेस का खाना",
+            "Clothes": "कपड़े",
+            "Accessories": "सामग्री/सामान",
+            "Savings": "बचत",
+        }
+    },
+    "ja": {
+        "greeting": "こんにちは",
+        "title": "残余予算内訳",
+        "active": "有効",
+        "branch": "項目",
+        "base": "基本予算",
+        "credited": "追加入金",
+        "total_alloc": "総割当額",
+        "spent": "支出済",
+        "remaining": "残金",
+        "total": "合計",
+        "categories": {
+            "Mess Food": "食費 (寮食)",
+            "Clothes": "衣服費",
+            "Accessories": "備品・小物",
+            "Savings": "貯金",
+        }
+    }
+}
+
+
+# ==========================================
 # ⚙️ USER CONFIGURATION & PREFERENCES
 # ==========================================
 DEFAULT_CONFIG = {
@@ -98,6 +159,11 @@ def get_cur_sym() -> str:
 
 def get_cur_code() -> str:
     return load_user_config().get("currency_code", "INR")
+
+
+def get_text():
+    lang = load_user_config().get("language", "en")
+    return I18N.get(lang, I18N["en"])
 
 
 def show_settings_menu():
@@ -196,21 +262,18 @@ def download_user_data(target_path: str = None):
 
     files_exported = []
 
-    # 1. Export Excel Sheet
     excel_src = Path(get_user_excel_path())
     if excel_src.exists():
         dest = export_folder / excel_src.name
         shutil.copy2(excel_src, dest)
         files_exported.append(dest)
 
-    # 2. Export SQLite Database
     db_src = Path(get_user_db_path())
     if db_src.exists():
         dest = export_folder / db_src.name
         shutil.copy2(db_src, dest)
         files_exported.append(dest)
 
-    # 3. Export Generated Reports / Statements
     if REPORTS_DIR.exists():
         reports_dest = export_folder / "reports"
         reports_dest.mkdir(exist_ok=True)
@@ -433,7 +496,6 @@ def sync_to_excel():
                 c.border = create_borders("E0E0E0")
             row_idx += 1
 
-            # Branch Tab
             ws_cat = wb.create_sheet(title=cat_name)
             ws_cat.append(["Timestamp", "Type", "Description", f"Amount ({sym})"])
             color = CATEGORY_COLORS[cat_name]
@@ -1005,13 +1067,13 @@ def generate_jujutsu_manual():
 # ==========================================
 def validate_month_code(code: str):
     if len(code) != 6 or not code.isdigit():
-        return False, "Input must be exactly 6 digits in MMYYYY format (e.g., 082026)."
-    month_num, year_num = int(code[:2]), int(code[2:])
+        return False, "Input must be exactly 6 digits in MMYYYY format (e.g., 082026)."[cite: 1, 2]
+    month_num, year_num = int(code[:2]), int(code[2:])[cite: 1, 2]
     if month_num < 1 or month_num > 12:
-        return False, f"Invalid month '{code[:2]}'. Must be between 01 and 12."
+        return False, f"Invalid month '{code[:2]}'. Must be between 01 and 12."[cite: 1, 2]
     if year_num < 2000 or year_num > 2100:
-        return False, f"Invalid year '{year_num}'. Must be between 2000 and 2100."
-    return True, f"{calendar.month_name[month_num]} {year_num}"
+        return False, f"Invalid year '{year_num}'. Must be between 2000 and 2100."[cite: 1, 2]
+    return True, f"{calendar.month_name[month_num]} {year_num}"[cite: 1, 2]
 
 
 def create_new_budget():
@@ -1025,8 +1087,8 @@ def create_new_budget():
 
     active_m = get_active_month()
     if active_m:
-        print(f"{C.YELLOW}⚠️  An active budget is currently running for: {active_m['month_name']} [{active_m['month_code']}]{C.RESET}")
-        burn_confirm = input(f"Are you sure you want to finalize '{active_m['month_name']}' table? (Y/N/B): ").strip().upper()
+        print(f"{C.YELLOW}⚠️  An active budget is currently running for: {active_m['month_name']} [{active_m['month_code']}]{C.RESET}")[cite: 1, 2]
+        burn_confirm = input(f"Are you sure you want to finalize '{active_m['month_name']}' table? (Y/N/B): ").strip().upper()[cite: 1, 2]
 
         if burn_confirm in ["B", "BACK", "CANCEL"]:
             print(f"{C.GRAY}↩ Creation canceled. Returning to terminal.{C.RESET}\n")
@@ -1037,10 +1099,10 @@ def create_new_budget():
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE months SET is_active = 0 WHERE id = ?", (active_m["id"],))
+            cursor.execute("UPDATE months SET is_active = 0 WHERE id = ?", (active_m["id"],))[cite: 1, 2]
             conn.commit()
 
-        print(f"{C.YELLOW}🔒 '{active_m['month_name']}' has been permanently archived (Read-Only).{C.RESET}")
+        print(f"{C.YELLOW}🔒 '{active_m['month_name']}' has been permanently archived (Read-Only).{C.RESET}")[cite: 1, 2]
 
     step = 1
     raw_code = ""
@@ -1357,7 +1419,7 @@ def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = No
     sync_to_excel()
     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
     print(f"\n{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
-    print(f" 💰 {C.BOLD}Credited Funds to [{cat_color}{cat_name}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")
+    print(f" 💰 {C.BOLD}Credited Funds to [{cat_color}{cat_name}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")[cite: 1, 2]
     print(f"  • Description         : {C.WHITE}{desc}{C.RESET}")
     print(f"  • Previous Allocation : {C.YELLOW}{sym}{current_alloc:>10.2f}{C.RESET}")
     print(f"  • Credited (+)        : {C.GREEN}+{sym}{add_amount:>9.2f}{C.RESET}")
@@ -1402,7 +1464,7 @@ def continuous_interactive_entry(cat_name: str):
     sym = get_cur_sym()
     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
     print(f"\n{C.CYAN}═════════════════════════════════════════════════════════════════{C.RESET}")
-    print(f" 🔄 {C.BOLD}CONTINUOUS LOGGING: [{cat_color}{cat_name.upper()}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")
+    print(f" 🔄 {C.BOLD}CONTINUOUS LOGGING: [{cat_color}{cat_name.upper()}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")[cite: 1, 2]
     print(f"    {C.GRAY}Tip: Type 'yosan -juubun' or 'exit' to finish session.{C.RESET}")
     print(f"{C.CYAN}═════════════════════════════════════════════════════════════════{C.RESET}")
 
@@ -1440,6 +1502,7 @@ def print_remaining_balance():
     active_m = get_active_month()
     username = get_current_username()
     sym = get_cur_sym()
+    t = get_text()
 
     if not active_m:
         with get_db_connection() as conn:
@@ -1448,30 +1511,30 @@ def print_remaining_balance():
             latest_m = cursor.fetchone()
 
         if not latest_m:
-            print(f"\nHi {C.CYAN}{C.BOLD}{username}{C.RESET}!")
+            print(f"\n{t['greeting']} {C.CYAN}{C.BOLD}{username}{C.RESET}!")
             print(f"\n{C.RED}❌ No budget records found. Run '{C.CYAN}yosan -new{C.RESET}{C.RED}' to create one.{C.RESET}")
             return
 
-        print(f"\nHi {C.CYAN}{C.BOLD}{username}{C.RESET}!")
+        print(f"\n{t['greeting']} {C.CYAN}{C.BOLD}{username}{C.RESET}!")
         print(f"\n{C.YELLOW}🔒 ALL BUDGETS ARE BURNED IN (READ-ONLY MODE){C.RESET}")
         print(f"👉 Run '{C.CYAN}yosan -new{C.RESET}' to initialize a new month's active budget.")
         peek_month_budget(latest_m["month_code"])
         return
 
     # Total width of table: 101 characters
-    title_text = f"REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]"
+    title_text = f"{t['title']} ({active_m['month_name'].upper()}) [{t['active']}]"
     box_width = 99
     t_spaces = max(0, box_width - len(title_text))
     t_l = t_spaces // 2
     t_r = t_spaces - t_l
 
-    print(f"\nHi {C.CYAN}{C.BOLD}{username}{C.RESET}!")
+    print(f"\n{t['greeting']} {C.CYAN}{C.BOLD}{username}{C.RESET}!")
     print(f"{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
     print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
 
     # Layout: Branch(13) | Base(15) | Credited(13) | Total Alloc(17) | Spent(15) | Remaining(16)
-    print(f"{C.BOLD}{'Branch':<13} | {'Base':>15} | {'Credited':>13} | {'Total Alloc':>17} | {'Spent':>15} | {'Remaining':>16}{C.RESET}")
+    print(f"{C.BOLD}{t['branch']:<13} | {t['base']:>15} | {t['credited']:>13} | {t['total_alloc']:>17} | {t['spent']:>15} | {t['remaining']:>16}{C.RESET}")
     print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
 
     with get_db_connection() as conn:
@@ -1515,6 +1578,8 @@ def print_remaining_balance():
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
+            display_cat = t["categories"].get(cat_name, cat_name)
+
             base_str = f"{sym}{base_amt:,.2f}"
             credit_str = f"+{sym}{credit_amt:,.2f}" if credit_amt > 0 else f"{sym}{credit_amt:,.2f}"
             alloc_str = f"{sym}{alloc_amt:,.2f}"
@@ -1522,7 +1587,7 @@ def print_remaining_balance():
             rem_str = f"{sym}{remaining:,.2f}" if remaining >= 0 else f"-{sym}{abs(remaining):,.2f}"
 
             print(
-                f"{cat_color}{cat_name:<13}{C.RESET} | "
+                f"{cat_color}{display_cat:<13}{C.RESET} | "
                 f"{C.WHITE}{base_str:>15}{C.RESET} | "
                 f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
                 f"{C.CYAN}{alloc_str:>17}{C.RESET} | "
@@ -1539,7 +1604,7 @@ def print_remaining_balance():
         tr_str = f"{sym}{total_rem:,.2f}" if total_rem >= 0 else f"-{sym}{abs(total_rem):,.2f}"
 
         print(
-            f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
+            f"{C.BOLD}{t['total']:<13}{C.RESET} | "
             f"{C.YELLOW}{tb_str:>15}{C.RESET} | "
             f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str:>13}{C.RESET} | "
             f"{C.CYAN}{ta_str:>17}{C.RESET} | "
@@ -1578,7 +1643,7 @@ def show_transaction_ledger(month_code: str = None):
         tx_list = cursor.fetchall()
 
     print(f"\n{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
-    print(f"  {C.BOLD}TRANSACTION LEDGER: {target_m['month_name'].upper()} [{target_m['month_code']}]{C.RESET}")
+    print(f"  {C.BOLD}TRANSACTION LEDGER: {target_m['month_name'].upper()} [{target_m['month_code']}]{C.RESET}")[cite: 1, 2]
     print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
 
     if not tx_list:
@@ -1602,7 +1667,7 @@ def print_summary():
 
     sym = get_cur_sym()
     print(f"\n{C.CYAN}═════════════════════════════════════════════{C.RESET}")
-    print(f"       {C.BOLD}{C.WHITE}YOSAN SPENDING SUMMARY ({active_m['month_name']}){C.RESET}")
+    print(f"       {C.BOLD}{C.WHITE}YOSAN SPENDING SUMMARY ({active_m['month_name']}){C.RESET}")[cite: 1, 2]
     print(f"{C.CYAN}═════════════════════════════════════════════{C.RESET}")
 
     with get_db_connection() as conn:
@@ -1638,7 +1703,7 @@ def peek_month_budget(month_code: str):
 
     sym = get_cur_sym()
     active_tag = f" {C.GREEN}(CURRENT ACTIVE){C.RESET}" if target_m["is_active"] == 1 else f" {C.YELLOW}(ARCHIVED - READ ONLY){C.RESET}"
-    title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name'].upper()} [{month_code}]"
+    title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name'].upper()} [{month_code}]"[cite: 1, 2]
     box_width = 99
     t_spaces = max(0, box_width - len(title_text))
     t_l = t_spaces // 2
@@ -1731,7 +1796,7 @@ def list_all_available_months():
     sym = get_cur_sym()
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT month_code, month_name, total_budget, is_active FROM months ORDER BY id DESC")
+        cursor.execute("SELECT month_code, month_name, total_budget, is_active FROM months ORDER BY id DESC")[cite: 1, 2]
         rows = cursor.fetchall()
 
     if not rows:
@@ -1744,8 +1809,8 @@ def list_all_available_months():
     print(f"{C.BOLD}{'Code':<8} | {'Month Name':<18} | {'Budget':>11} | {'Status'}{C.RESET}")
     print(f"{C.GRAY}───────────────────────────────────────────────────────{C.RESET}")
     for r in rows:
-        status = f"{C.GREEN}Active{C.RESET}" if r["is_active"] == 1 else f"{C.GRAY}Archived{C.RESET}"
-        print(f"{C.YELLOW}{r['month_code']:<8}{C.RESET} | {r['month_name']:<18} | {C.GREEN}{sym}{r['total_budget']:>10.2f}{C.RESET} | {status}")
+        status = f"{C.GREEN}Active{C.RESET}" if r["is_active"] == 1 else f"{C.GRAY}Archived{C.RESET}"[cite: 1, 2]
+        print(f"{C.YELLOW}{r['month_code']:<8}{C.RESET} | {r['month_name']:<18} | {C.GREEN}{sym}{r['total_budget']:>10.2f}{C.RESET} | {status}")[cite: 1, 2]
     print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
     print(f"{C.GRAY}Run: yosan peek -d <code (e.g. 082026)>{C.RESET}\n")
 
@@ -1757,14 +1822,14 @@ def burn_current_budget():
         print(f"\n{C.YELLOW}🔒 There is no active budget running. Everything is already burned in / read-only.{C.RESET}")
         return
 
-    print(f"\n{C.YELLOW}⚠️  Current Active Budget: {active_m['month_name']} [{active_m['month_code']}]{C.RESET}")
-    confirm = input(f"Are you sure you want to {C.RED}BURN IN{C.RESET} and lock '{active_m['month_name']}' permanently? (Y/N): ").strip().upper()
+    print(f"\n{C.YELLOW}⚠️  Current Active Budget: {active_m['month_name']} [{active_m['month_code']}]{C.RESET}")[cite: 1, 2]
+    confirm = input(f"Are you sure you want to {C.RED}BURN IN{C.RESET} and lock '{active_m['month_name']}' permanently? (Y/N): ").strip().upper()[cite: 1, 2]
     if confirm == "Y":
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE months SET is_active = 0 WHERE id = ?", (active_m["id"],))
+            cursor.execute("UPDATE months SET is_active = 0 WHERE id = ?", (active_m["id"],))[cite: 1, 2]
             conn.commit()
-        print(f"{C.GREEN} '{active_m['month_name']}' is now BURNED IN and set to READ-ONLY.{C.RESET}\n")
+        print(f"{C.GREEN} '{active_m['month_name']}' is now BURNED IN and set to READ-ONLY.{C.RESET}\n")[cite: 1, 2]
     else:
         print(f"{C.GRAY}❌ Action canceled. Active budget remains untouched.{C.RESET}\n")
 
@@ -1792,14 +1857,12 @@ def main():
         show_profile_view()
         return
 
-    # Route: yosan -set / yosan settings
     if "-set" in sys.argv or "--settings" in sys.argv or "settings" in sys.argv:
         show_settings_menu()
         return
 
     init_db()
 
-    # Route: yosan -dl / yosan download [optional_destination]
     if "-dl" in sys.argv or "--download" in sys.argv or "download" in sys.argv:
         dest_dir = None
         for arg in sys.argv[1:]:
