@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import sys
 import openpyxl
@@ -21,6 +22,7 @@ os.system("")
 
 DATA_DIR = Path.home() / "Documents"
 REPORTS_DIR = DATA_DIR / "yosan_reports"
+CONFIG_FILE = DATA_DIR / ".yosan_config.json"
 
 
 # ==========================================
@@ -60,6 +62,177 @@ CATEGORY_COLORS = {
     "Accessories": "BF8F00",
     "Savings": "7030A0",
 }
+
+
+# ==========================================
+# ⚙️ USER CONFIGURATION & PREFERENCES
+# ==========================================
+DEFAULT_CONFIG = {
+    "currency_symbol": "₹",
+    "currency_code": "INR",
+    "language": "en",
+    "color_theme": "cyber_cyan",
+}
+
+
+def load_user_config() -> dict:
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                return {**DEFAULT_CONFIG, **cfg}
+        except Exception:
+            return DEFAULT_CONFIG
+    return DEFAULT_CONFIG
+
+
+def save_user_config(cfg: dict):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4)
+
+
+def get_cur_sym() -> str:
+    return load_user_config().get("currency_symbol", "₹")
+
+
+def get_cur_code() -> str:
+    return load_user_config().get("currency_code", "INR")
+
+
+def show_settings_menu():
+    while True:
+        cfg = load_user_config()
+        sym = cfg.get("currency_symbol", "₹")
+        code = cfg.get("currency_code", "INR")
+        lang = cfg.get("language", "en")
+        theme = cfg.get("color_theme", "cyber_cyan")
+
+        print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════╗{C.RESET}")
+        print(f"{C.CYAN}║{C.RESET}                 {C.BOLD}{C.WHITE}⚙️  YOSAN CLI PREFERENCES & SETTINGS{C.RESET}             {C.CYAN}║{C.RESET}")
+        print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════╝{C.RESET}")
+        print(f"  {C.CYAN}[1]{C.RESET} Currency Notation    : {C.GREEN}{sym} ({code}){C.RESET}")
+        print(f"  {C.CYAN}[2]{C.RESET} Display Language     : {C.YELLOW}{lang.upper()}{C.RESET}")
+        print(f"  {C.CYAN}[3]{C.RESET} Terminal Color Theme : {C.PURPLE}{theme}{C.RESET}")
+        print(f"  {C.CYAN}[4]{C.RESET} Reset to Defaults")
+        print(f"  {C.CYAN}[5]{C.RESET} Back to Terminal {C.GRAY}(or 'b'){C.RESET}")
+        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────{C.RESET}")
+
+        ch = input(f"{C.CYAN}Select an option (1-5) [Default 5]: {C.RESET}").strip()
+
+        if ch == "1":
+            print(f"\n{C.CYAN}Select Currency Symbol & Code:{C.RESET}")
+            print("  [1] ₹ INR (Indian Rupee)")
+            print("  [2] $ USD (US Dollar)")
+            print("  [3] € EUR (Euro)")
+            print("  [4] £ GBP (British Pound)")
+            print("  [5] ¥ JPY (Japanese Yen)")
+            print("  [6] Custom Symbol")
+            c_ch = input(f"{C.CYAN}Choose currency (1-6): {C.RESET}").strip()
+
+            currencies = {
+                "1": ("₹", "INR"),
+                "2": ("$", "USD"),
+                "3": ("€", "EUR"),
+                "4": ("£", "GBP"),
+                "5": ("¥", "JPY"),
+            }
+            if c_ch in currencies:
+                cfg["currency_symbol"], cfg["currency_code"] = currencies[c_ch]
+                save_user_config(cfg)
+                print(f"{C.GREEN}✔ Currency updated to {cfg['currency_symbol']} ({cfg['currency_code']}).{C.RESET}")
+            elif c_ch == "6":
+                cust_sym = input("Enter custom symbol: ").strip()
+                cust_code = input("Enter 3-letter currency code: ").strip().upper()
+                if cust_sym:
+                    cfg["currency_symbol"] = cust_sym
+                    cfg["currency_code"] = cust_code or "CUSTOM"
+                    save_user_config(cfg)
+                    print(f"{C.GREEN}✔ Custom currency saved.{C.RESET}")
+
+        elif ch == "2":
+            print(f"\n{C.CYAN}Select Interface Language:{C.RESET}")
+            print("  [1] English (EN)")
+            print("  [2] Hindi (HI - हिन्दी)")
+            print("  [3] Japanese (JA - 日本語)")
+            l_ch = input(f"{C.CYAN}Choose language (1-3): {C.RESET}").strip()
+            lang_map = {"1": "en", "2": "hi", "3": "ja"}
+            if l_ch in lang_map:
+                cfg["language"] = lang_map[l_ch]
+                save_user_config(cfg)
+                print(f"{C.GREEN}✔ Language set to {cfg['language'].upper()}.{C.RESET}")
+
+        elif ch == "3":
+            print(f"\n{C.CYAN}Select Visual Theme:{C.RESET}")
+            print(f"  [1] {C.CYAN}Cyber Cyan (Default){C.RESET}")
+            print(f"  [2] {C.GREEN}Emerald Green{C.RESET}")
+            print(f"  [3] {C.PURPLE}Purple Neon{C.RESET}")
+            t_ch = input(f"{C.CYAN}Choose theme (1-3): {C.RESET}").strip()
+            theme_map = {"1": "cyber_cyan", "2": "emerald_green", "3": "purple_neon"}
+            if t_ch in theme_map:
+                cfg["color_theme"] = theme_map[t_ch]
+                save_user_config(cfg)
+                print(f"{C.GREEN}✔ Theme updated to {cfg['color_theme']}.{C.RESET}")
+
+        elif ch == "4":
+            save_user_config(DEFAULT_CONFIG)
+            print(f"{C.YELLOW}✔ Reset all preferences to default factory configuration.{C.RESET}")
+
+        elif ch in ["5", "", "b", "back", "q", "exit"]:
+            break
+
+
+# ==========================================
+# 📦 DATA DOWNLOAD & BACKUP PACKAGER
+# ==========================================
+def download_user_data(target_path: str = None):
+    init_db()
+    sync_to_excel()
+
+    username = get_current_username()
+    downloads_dir = Path(target_path) if target_path else (Path.home() / "Downloads")
+    export_folder = downloads_dir / f"yosan_export_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    export_folder.mkdir(parents=True, exist_ok=True)
+
+    files_exported = []
+
+    # 1. Export Excel Sheet
+    excel_src = Path(get_user_excel_path())
+    if excel_src.exists():
+        dest = export_folder / excel_src.name
+        shutil.copy2(excel_src, dest)
+        files_exported.append(dest)
+
+    # 2. Export SQLite Database
+    db_src = Path(get_user_db_path())
+    if db_src.exists():
+        dest = export_folder / db_src.name
+        shutil.copy2(db_src, dest)
+        files_exported.append(dest)
+
+    # 3. Export Generated Reports / Statements
+    if REPORTS_DIR.exists():
+        reports_dest = export_folder / "reports"
+        reports_dest.mkdir(exist_ok=True)
+        for report_file in REPORTS_DIR.glob(f"*{username}*"):
+            dest = reports_dest / report_file.name
+            shutil.copy2(report_file, dest)
+            files_exported.append(dest)
+
+    print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════════════════════════╗{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}                     {C.BOLD}{C.WHITE}📦 YOSAN DATA PACKAGE EXPORTED SUCCESSFULLY{C.RESET}                     {C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════════════════════════╝{C.RESET}")
+    print(f"  {C.CYAN}•{C.RESET} Export Location : {C.GREEN}{export_folder}{C.RESET}")
+    print(f"  {C.CYAN}•{C.RESET} Files Packaged  : {C.YELLOW}{len(files_exported)} files{C.RESET}")
+    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    for f in files_exported:
+        print(f"    ✔ {C.WHITE}{f.name}{C.RESET}")
+    print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+
+    try:
+        os.startfile(export_folder)
+    except Exception:
+        pass
 
 
 # ==========================================
@@ -184,16 +357,17 @@ def sync_to_excel():
     if not active_m:
         return
 
+    sym = get_cur_sym()
     wb = openpyxl.Workbook()
     ws_dash = wb.active
     ws_dash.title = "Summary"
     ws_dash.append([
         "Category",
-        "Base Budget (₹)",
-        "Credited (₹)",
-        "Total Allocated (₹)",
-        "Spent (₹)",
-        "Remaining (₹)",
+        f"Base Budget ({sym})",
+        f"Credited ({sym})",
+        f"Total Allocated ({sym})",
+        f"Spent ({sym})",
+        f"Remaining ({sym})",
     ])
 
     dash_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
@@ -261,7 +435,7 @@ def sync_to_excel():
 
             # Branch Tab
             ws_cat = wb.create_sheet(title=cat_name)
-            ws_cat.append(["Timestamp", "Type", "Description", "Amount (₹)"])
+            ws_cat.append(["Timestamp", "Type", "Description", f"Amount ({sym})"])
             color = CATEGORY_COLORS[cat_name]
             h_fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
             for cell in ws_cat[1]:
@@ -330,6 +504,7 @@ def generate_txt_report(target_m, branch_data, grand_base, grand_credit, grand_a
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     username = get_current_username()
     file_path = REPORTS_DIR / f"budget_report_{username}_{target_m['month_code']}.txt"
+    code = get_cur_code()
 
     header_title = (
         f"MONTH-END STATEMENT: {target_m['month_name'].upper()}"
@@ -344,11 +519,11 @@ def generate_txt_report(target_m, branch_data, grand_base, grand_credit, grand_a
         f" User           : {username}",
         f" Status         : {'BURNED IN / ARCHIVED (FINAL)' if target_m['is_active'] == 0 else 'ACTIVE / ONGOING'}",
         f" Generated on   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f" Base Budget    : INR {grand_base:.2f}",
-        f" Credited (+)   : INR {grand_credit:.2f}",
-        f" Total Budget   : INR {grand_alloc:.2f}",
-        f" Total Spent    : INR {grand_spent:.2f}",
-        f" Net Balance    : INR {(grand_alloc - grand_spent):.2f}",
+        f" Base Budget    : {code} {grand_base:.2f}",
+        f" Credited (+)   : {code} {grand_credit:.2f}",
+        f" Total Budget   : {code} {grand_alloc:.2f}",
+        f" Total Spent    : {code} {grand_spent:.2f}",
+        f" Net Balance    : {code} {(grand_alloc - grand_spent):.2f}",
         "=" * 98 + "\n",
     ]
 
@@ -359,9 +534,9 @@ def generate_txt_report(target_m, branch_data, grand_base, grand_credit, grand_a
         spent = b_info["spent"]
         rem = alloc - spent
         lines.append(f"BRANCH: {cat_name.upper()}")
-        lines.append(f"Base: INR {base:.2f} | Credited: +INR {credit:.2f} | Total: INR {alloc:.2f} | Spent: INR {spent:.2f} | Remaining: INR {rem:.2f}")
+        lines.append(f"Base: {code} {base:.2f} | Credited: +{code} {credit:.2f} | Total: {code} {alloc:.2f} | Spent: {code} {spent:.2f} | Remaining: {code} {rem:.2f}")
         lines.append("-" * 98)
-        lines.append(f"{'#':<4} | {'Timestamp':<20} | {'Description':<38} | {'Debit (INR)':>13} | {'Credit (INR)':>13}")
+        lines.append(f"{'#':<4} | {'Timestamp':<20} | {'Description':<38} | {f'Debit ({code})':>13} | {f'Credit ({code})':>13}")
         lines.append("-" * 98)
         if b_info["ledger"]:
             for idx, tx in enumerate(b_info["ledger"], start=1):
@@ -382,6 +557,7 @@ def generate_pdf_report(target_m, branch_data, grand_base, grand_credit, grand_a
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     username = get_current_username()
     file_path = REPORTS_DIR / f"budget_report_{username}_{target_m['month_code']}.pdf"
+    code = get_cur_code()
 
     doc = SimpleDocTemplate(
         str(file_path),
@@ -473,18 +649,18 @@ def generate_pdf_report(target_m, branch_data, grand_base, grand_credit, grand_a
         rem = b_info["alloc"] - b_info["spent"]
         summary_data.append([
             Paragraph(cat_name, cell_regular),
-            f"INR {b_info['base']:.2f}",
-            f"+INR {b_info['credit']:.2f}" if b_info["credit"] > 0 else "INR 0.00",
-            f"INR {b_info['spent']:.2f}",
-            f"INR {rem:.2f}",
+            f"{code} {b_info['base']:.2f}",
+            f"+{code} {b_info['credit']:.2f}" if b_info["credit"] > 0 else f"{code} 0.00",
+            f"{code} {b_info['spent']:.2f}",
+            f"{code} {rem:.2f}",
         ])
 
     summary_data.append([
         Paragraph("TOTAL", cell_bold),
-        f"INR {grand_base:.2f}",
-        f"+INR {grand_credit:.2f}",
-        f"INR {grand_spent:.2f}",
-        f"INR {(grand_alloc - grand_spent):.2f}",
+        f"{code} {grand_base:.2f}",
+        f"+{code} {grand_credit:.2f}",
+        f"{code} {grand_spent:.2f}",
+        f"{code} {(grand_alloc - grand_spent):.2f}",
     ])
 
     t_summary = Table(summary_data, colWidths=[135, 95, 95, 100, 105])
@@ -513,10 +689,10 @@ def generate_pdf_report(target_m, branch_data, grand_base, grand_credit, grand_a
         credit = b_info["credit"]
         rem = alloc - spent
 
-        credit_str = f" | Credited: +INR {credit:.2f}" if credit > 0 else ""
+        credit_str = f" | Credited: +{code} {credit:.2f}" if credit > 0 else ""
         story.append(
             Paragraph(
-                f"<b>{cat_name.upper()}</b> &nbsp;—&nbsp; Effective Budget: INR {alloc:.2f}{credit_str} | Spent: INR {spent:.2f} | Balance: INR {rem:.2f}",
+                f"<b>{cat_name.upper()}</b> &nbsp;—&nbsp; Effective Budget: {code} {alloc:.2f}{credit_str} | Spent: {code} {spent:.2f} | Balance: {code} {rem:.2f}",
                 meta_style,
             )
         )
@@ -527,15 +703,15 @@ def generate_pdf_report(target_m, branch_data, grand_base, grand_credit, grand_a
                 Paragraph("#", cell_bold),
                 Paragraph("Timestamp", cell_bold),
                 Paragraph("Description", cell_bold),
-                Paragraph("Debit (INR)", cell_bold),
-                Paragraph("Credit (INR)", cell_bold),
+                Paragraph(f"Debit ({code})", cell_bold),
+                Paragraph(f"Credit ({code})", cell_bold),
             ]
         ]
 
         if b_info["ledger"]:
             for idx, tx in enumerate(b_info["ledger"], start=1):
-                debit_val = f"INR {tx['amount']:.2f}" if tx["type"] == "Expense" else "-"
-                credit_val = f"+INR {tx['amount']:.2f}" if tx["type"] == "Credit" else "-"
+                debit_val = f"{code} {tx['amount']:.2f}" if tx["type"] == "Expense" else "-"
+                credit_val = f"+{code} {tx['amount']:.2f}" if tx["type"] == "Credit" else "-"
                 branch_table_data.append([
                     Paragraph(str(idx), cell_regular),
                     Paragraph(tx["timestamp"], cell_regular),
@@ -742,6 +918,8 @@ def generate_jujutsu_manual():
         ("yosan -u [flag] [amt] -d \"...\"", "Credits / Adds money to a branch budget and increases overall monthly allowance."),
         ("yosan -new", "Launches Multi-Step Wizard with live auto-fill and boundary caps ('p'=prev, 'b'=abort)."),
         ("yosan -p, yosan profile", "Opens profile dashboard (view account info, change password, delete account)."),
+        ("yosan -set, yosan settings", "Opens Preferences Menu to configure Currency Symbol (₹, $, €, £, ¥), Language, and Theme."),
+        ("yosan -dl, yosan download", "Packages and downloads database, Excel spreadsheets, and reports to Downloads folder."),
         ("yosan -burn", "Permanently finalizes and locks the active budget cycle into Read-Only mode."),
         ("yosan -report [code]", "Exports formatted Text and styled A4 PDF financial statements for any month."),
         ("yosan -jujutsu", "Generates and opens this Command Manual PDF documentation (Accessible logged out)."),
@@ -803,6 +981,7 @@ def generate_jujutsu_manual():
             "• <b>Smart Wizard ('yosan -new')</b>: Features live boundary protection preventing entry over the maximum remaining limit, auto-fills the remaining balance on the final branch, and renders the live dashboard upon creation.<br/>"
             "• <b>Transaction Inspection ('yosan -t [-d MMYYYY]')</b>: Isolates the itemized debit/credit logs so the primary dashboard remains clean and focused.<br/>"
             "• <b>Continuous Logging ('yosan switch -m')</b>: Enter sequential items without repeating command names. Exit with <b>'yosan -juubun'</b> or <b>'exit'</b>.<br/>"
+            "• <b>Custom Preferences ('yosan -set')</b>: Personalize currency signs across your dashboards, terminal tables, and exported files.<br/>"
             "• <b>Cloud Security & Authentication</b>: 1.0s debounced username/email validation, real-time password strength checking (8+ chars, uppercase, digit, symbol), real-time confirmation match badges, and PBKDF2 600k hashing.",
             subtitle_style,
         )
@@ -837,6 +1016,7 @@ def validate_month_code(code: str):
 
 def create_new_budget():
     init_db()
+    sym = get_cur_sym()
     print(f"\n{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
     print(f"        {C.BOLD}{C.WHITE}INITIALIZE NEW MONTHLY BUDGET WIZARD{C.RESET}")
     print(f"  {C.GRAY}• Type 'p' / 'prev' at any step to return to previous step{C.RESET}")
@@ -910,7 +1090,7 @@ def create_new_budget():
 
         # STEP 2: Total Budget Amount
         elif step == 2:
-            raw_input = input(f"\n{C.CYAN}[Step 2/4]{C.RESET} Enter Total Budget for {C.BOLD}{month_display}{C.RESET} (₹) [p=prev step, b=cancel]: ").strip()
+            raw_input = input(f"\n{C.CYAN}[Step 2/4]{C.RESET} Enter Total Budget for {C.BOLD}{month_display}{C.RESET} ({sym}) [p=prev step, b=cancel]: ").strip()
             if raw_input.lower() in ["p", "prev", "previous"]:
                 print(f"{C.GRAY}↩ Going back to Step 1 (Month Code)...{C.RESET}")
                 step = 1
@@ -920,7 +1100,7 @@ def create_new_budget():
                 return
 
             try:
-                income_val = float(raw_input.replace(",", "").replace("₹", ""))
+                income_val = float(raw_input.replace(",", "").replace(sym, "").replace("₹", ""))
                 if income_val <= 0:
                     print(f"{C.RED}❌ Total budget must be greater than 0.{C.RESET}")
                     continue
@@ -931,9 +1111,9 @@ def create_new_budget():
 
         # STEP 3: Assign Branch Budgets
         elif step == 3:
-            print(f"\n{C.CYAN}[Step 3/4]{C.RESET} Assign Branch Budgets for {C.BOLD}{month_display}{C.RESET} (Total: {C.GREEN}₹{total_income:,.2f}{C.RESET})")
+            print(f"\n{C.CYAN}[Step 3/4]{C.RESET} Assign Branch Budgets for {C.BOLD}{month_display}{C.RESET} (Total: {C.GREEN}{sym}{total_income:,.2f}{C.RESET})")
             print(f"  {C.CYAN}[1]{C.RESET} Auto-divide by Percentage Ratio (e.g., 40%, 20%, 15%, 25%)")
-            print(f"  {C.CYAN}[2]{C.RESET} Manual Entry (Enter absolute ₹ amounts per branch)")
+            print(f"  {C.CYAN}[2]{C.RESET} Manual Entry (Enter absolute {sym} amounts per branch)")
             print(f"  {C.CYAN}[p]{C.RESET} Previous Step (Go back to change Total Budget)")
             print(f"  {C.CYAN}[b]{C.RESET} Cancel & Exit")
 
@@ -1009,7 +1189,7 @@ def create_new_budget():
 
             # --- OPTION 2: ABSOLUTE AMOUNT ALLOCATION (With Immediate Cap Verification) ---
             elif choice == "2":
-                print(f"\n{C.GRAY}Enter allocated ₹ amount for each branch ('p'=back):{C.RESET}")
+                print(f"\n{C.GRAY}Enter allocated {sym} amount for each branch ('p'=back):{C.RESET}")
                 tot_m = 0.0
                 alloc_map = {}
                 step_canceled = False
@@ -1022,9 +1202,9 @@ def create_new_budget():
 
                     while True:
                         if is_last:
-                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): ₹{remaining_m:,.2f} (Auto-filled, Enter to accept): "
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] ({sym}): {sym}{remaining_m:,.2f} (Auto-filled, Enter to accept): "
                         else:
-                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹) [Max ₹{remaining_m:,.2f}]: "
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] ({sym}) [Max {sym}{remaining_m:,.2f}]: "
 
                         val_in = input(prompt_str).strip()
 
@@ -1036,7 +1216,7 @@ def create_new_budget():
                             val = remaining_m
                         else:
                             try:
-                                val = float(val_in.replace(",", "").replace("₹", ""))
+                                val = float(val_in.replace(",", "").replace(sym, "").replace("₹", ""))
                             except ValueError:
                                 print(f"    {C.RED}❌ Numeric amount required.{C.RESET}")
                                 continue
@@ -1046,7 +1226,7 @@ def create_new_budget():
                             continue
 
                         if val > remaining_m:
-                            print(f"    {C.RED}❌ Value exceeds remaining budget! Maximum allowed is ₹{remaining_m:,.2f}.{C.RESET}")
+                            print(f"    {C.RED}❌ Value exceeds remaining budget! Maximum allowed is {sym}{remaining_m:,.2f}.{C.RESET}")
                             continue
 
                         alloc_map[cat_name] = val
@@ -1063,7 +1243,7 @@ def create_new_budget():
                     branch_allocations = alloc_map
                     step = 4
                 else:
-                    print(f"{C.RED}❌ Sum ₹{tot_m:,.2f} does not match total ₹{total_income:,.2f}.{C.RESET}")
+                    print(f"{C.RED}❌ Sum {sym}{tot_m:,.2f} does not match total {sym}{total_income:,.2f}.{C.RESET}")
             else:
                 print(f"{C.RED}❌ Invalid option. Enter 1, 2, p, or b.{C.RESET}")
 
@@ -1074,9 +1254,9 @@ def create_new_budget():
             for name, amt in branch_allocations.items():
                 pct = (amt / total_income) * 100.0
                 cat_color = CATEGORY_ANSI.get(name, C.WHITE)
-                amt_str = f"₹{amt:,.2f}"
+                amt_str = f"{sym}{amt:,.2f}"
                 print(f"    - {cat_color}{name:<12}{C.RESET}: {C.YELLOW}{amt_str:>16}{C.RESET} {C.GRAY}({pct:>5.1f}%){C.RESET}")
-            total_str = f"₹{total_income:,.2f}"
+            total_str = f"{sym}{total_income:,.2f}"
             print(f"  {C.BOLD}Total Budget : {C.GREEN}{total_str:>16}{C.RESET}")
             print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
 
@@ -1125,6 +1305,7 @@ def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = No
         print(f"👉 Run '{C.CYAN}yosan -new{C.RESET}' to create an active budget first.\n")
         return
 
+    sym = get_cur_sym()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -1141,10 +1322,10 @@ def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = No
         if add_amount is None:
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
             print(f"\n{C.CYAN}--- Add Money / Increase Budget for [{cat_color}{cat_name}{C.RESET}{C.CYAN}] ---{C.RESET}")
-            print(f"Current Allocation: {C.YELLOW}₹{current_alloc:.2f}{C.RESET}")
+            print(f"Current Allocation: {C.YELLOW}{sym}{current_alloc:.2f}{C.RESET}")
             while True:
                 try:
-                    add_amount = float(input(f"Enter amount to add to [{cat_name}] (₹): "))
+                    add_amount = float(input(f"Enter amount to add to [{cat_name}] ({sym}): "))
                     if add_amount <= 0:
                         continue
                     break
@@ -1178,10 +1359,10 @@ def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = No
     print(f"\n{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
     print(f" 💰 {C.BOLD}Credited Funds to [{cat_color}{cat_name}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")
     print(f"  • Description         : {C.WHITE}{desc}{C.RESET}")
-    print(f"  • Previous Allocation : {C.YELLOW}₹{current_alloc:>10.2f}{C.RESET}")
-    print(f"  • Credited (+)        : {C.GREEN}+₹{add_amount:>9.2f}{C.RESET}")
-    print(f"  • New Total Allocation: {C.CYAN}₹{new_alloc:>10.2f}{C.RESET}")
-    print(f"  • New Total Budget    : {C.GREEN}₹{new_total:>10.2f}{C.RESET}")
+    print(f"  • Previous Allocation : {C.YELLOW}{sym}{current_alloc:>10.2f}{C.RESET}")
+    print(f"  • Credited (+)        : {C.GREEN}+{sym}{add_amount:>9.2f}{C.RESET}")
+    print(f"  • New Total Allocation: {C.CYAN}{sym}{new_alloc:>10.2f}{C.RESET}")
+    print(f"  • New Total Budget    : {C.GREEN}{sym}{new_total:>10.2f}{C.RESET}")
     print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}\n")
 
 
@@ -1193,6 +1374,7 @@ def add_entry(cat_name: str, desc: str, amount: float):
         print(f"👉 Run '{C.CYAN}yosan -new{C.RESET}' to create an active budget first.\n")
         return
 
+    sym = get_cur_sym()
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1207,7 +1389,7 @@ def add_entry(cat_name: str, desc: str, amount: float):
 
     sync_to_excel()
     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-    print(f" {C.GREEN}✔{C.RESET} Saved under [{cat_color}{cat_name}{C.RESET}]: {C.WHITE}{desc}{C.RESET} -> {C.RED}₹{amount:.2f}{C.RESET}")
+    print(f" {C.GREEN}✔{C.RESET} Saved under [{cat_color}{cat_name}{C.RESET}]: {C.WHITE}{desc}{C.RESET} -> {C.RED}{sym}{amount:.2f}{C.RESET}")
 
 
 def continuous_interactive_entry(cat_name: str):
@@ -1217,6 +1399,7 @@ def continuous_interactive_entry(cat_name: str):
         print(f"👉 Run '{C.CYAN}yosan -new{C.RESET}' to create an active budget first.\n")
         return
 
+    sym = get_cur_sym()
     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
     print(f"\n{C.CYAN}═════════════════════════════════════════════════════════════════{C.RESET}")
     print(f" 🔄 {C.BOLD}CONTINUOUS LOGGING: [{cat_color}{cat_name.upper()}{C.RESET}{C.BOLD}] ({active_m['month_name']}){C.RESET}")
@@ -1235,19 +1418,19 @@ def continuous_interactive_entry(cat_name: str):
             continue
 
         while True:
-            amount_str = input(f"[{cat_color}{cat_name}{C.RESET}] Amount for '{desc}' (₹): ").strip()
+            amount_str = input(f"[{cat_color}{cat_name}{C.RESET}] Amount for '{desc}' ({sym}): ").strip()
             if amount_str.lower() in ["yosan -juubun", "juubun", "-juubun", "exit", "quit", "q"]:
                 print(f"\n{C.GREEN}✅ Finished session for [{cat_name}]. (Juubun / 充分){C.RESET}")
                 return
             try:
-                amount = float(amount_str.replace(",", "").replace("₹", ""))
+                amount = float(amount_str.replace(",", "").replace(sym, "").replace("₹", ""))
                 if amount <= 0:
                     print(f"{C.RED}Amount must be greater than 0.{C.RESET}")
                     continue
                 add_entry(cat_name, desc, amount)
                 break
             except ValueError:
-                print(f"{C.RED}❌ Invalid amount. Enter numeric ₹ value.{C.RESET}")
+                print(f"{C.RED}❌ Invalid amount. Enter numeric {sym} value.{C.RESET}")
 
     print_remaining_balance()
 
@@ -1256,6 +1439,7 @@ def print_remaining_balance():
     init_db()
     active_m = get_active_month()
     username = get_current_username()
+    sym = get_cur_sym()
 
     if not active_m:
         with get_db_connection() as conn:
@@ -1274,7 +1458,7 @@ def print_remaining_balance():
         peek_month_budget(latest_m["month_code"])
         return
 
-    # Total width of the table is exactly 101 characters
+    # Total width of table: 101 characters
     title_text = f"REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]"
     box_width = 99
     t_spaces = max(0, box_width - len(title_text))
@@ -1286,7 +1470,7 @@ def print_remaining_balance():
     print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
 
-    # Fixed Column Layout: Branch(13) | Base(15) | Credited(13) | Total Alloc(17) | Spent(15) | Remaining(16)
+    # Layout: Branch(13) | Base(15) | Credited(13) | Total Alloc(17) | Spent(15) | Remaining(16)
     print(f"{C.BOLD}{'Branch':<13} | {'Base':>15} | {'Credited':>13} | {'Total Alloc':>17} | {'Spent':>15} | {'Remaining':>16}{C.RESET}")
     print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
 
@@ -1331,11 +1515,11 @@ def print_remaining_balance():
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            base_str = f"₹{base_amt:,.2f}"
-            credit_str = f"+₹{credit_amt:,.2f}" if credit_amt > 0 else f"₹{credit_amt:,.2f}"
-            alloc_str = f"₹{alloc_amt:,.2f}"
-            spent_str = f"₹{cat_spent:,.2f}"
-            rem_str = f"₹{remaining:,.2f}" if remaining >= 0 else f"-₹{abs(remaining):,.2f}"
+            base_str = f"{sym}{base_amt:,.2f}"
+            credit_str = f"+{sym}{credit_amt:,.2f}" if credit_amt > 0 else f"{sym}{credit_amt:,.2f}"
+            alloc_str = f"{sym}{alloc_amt:,.2f}"
+            spent_str = f"{sym}{cat_spent:,.2f}"
+            rem_str = f"{sym}{remaining:,.2f}" if remaining >= 0 else f"-{sym}{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{cat_name:<13}{C.RESET} | "
@@ -1348,11 +1532,11 @@ def print_remaining_balance():
 
         print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        tb_str = f"₹{grand_base:,.2f}"
-        tc_str = f"+₹{grand_credit:,.2f}" if grand_credit > 0 else f"₹{grand_credit:,.2f}"
-        ta_str = f"₹{grand_alloc:,.2f}"
-        ts_str = f"₹{grand_spent:,.2f}"
-        tr_str = f"₹{total_rem:,.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):,.2f}"
+        tb_str = f"{sym}{grand_base:,.2f}"
+        tc_str = f"+{sym}{grand_credit:,.2f}" if grand_credit > 0 else f"{sym}{grand_credit:,.2f}"
+        ta_str = f"{sym}{grand_alloc:,.2f}"
+        ts_str = f"{sym}{grand_spent:,.2f}"
+        tr_str = f"{sym}{total_rem:,.2f}" if total_rem >= 0 else f"-{sym}{abs(total_rem):,.2f}"
 
         print(
             f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
@@ -1379,6 +1563,7 @@ def show_transaction_ledger(month_code: str = None):
         print(f"\n{C.RED}❌ No active budget found. Run 'yosan -new' or provide a month code.{C.RESET}\n")
         return
 
+    sym = get_cur_sym()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -1401,7 +1586,7 @@ def show_transaction_ledger(month_code: str = None):
         return
 
     for idx, tx in enumerate(tx_list, start=1):
-        amt_str = f"{C.GREEN}+₹{tx['amount']:>9.2f}{C.RESET}" if tx["type"] == "Credit" else f"{C.RED}₹{tx['amount']:>9.2f}{C.RESET}"
+        amt_str = f"{C.GREEN}+{sym}{tx['amount']:>9.2f}{C.RESET}" if tx["type"] == "Credit" else f"{C.RED}{sym}{tx['amount']:>9.2f}{C.RESET}"
         cat_color = CATEGORY_ANSI.get(tx["branch"], C.WHITE)
         print(f"  {C.GRAY}{idx:>2}.{C.RESET} [{C.GRAY}{tx['timestamp']}{C.RESET}] [{C.BOLD}{tx['type']:<7}{C.RESET}] [{cat_color}{tx['branch']:<12}{C.RESET}] {tx['description']:<30} -> {amt_str}")
 
@@ -1415,6 +1600,7 @@ def print_summary():
         print(f"\n{C.RED}❌ No active budget found. Run '{C.CYAN}yosan -new{C.RESET}{C.RED}' first.{C.RESET}")
         return
 
+    sym = get_cur_sym()
     print(f"\n{C.CYAN}═════════════════════════════════════════════{C.RESET}")
     print(f"       {C.BOLD}{C.WHITE}YOSAN SPENDING SUMMARY ({active_m['month_name']}){C.RESET}")
     print(f"{C.CYAN}═════════════════════════════════════════════{C.RESET}")
@@ -1430,11 +1616,11 @@ def print_summary():
             row = cursor.fetchone()
             cat_total = row["total"] if row["total"] else 0.0
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            print(f" * {cat_color}{cat_name:<20}{C.RESET}: {C.RED}₹{cat_total:>10.2f}{C.RESET}")
+            print(f" * {cat_color}{cat_name:<20}{C.RESET}: {C.RED}{sym}{cat_total:>10.2f}{C.RESET}")
             grand_total += cat_total
 
         print(f"{C.GRAY}─────────────────────────────────────────────{C.RESET}")
-        print(f" {C.BOLD}GRAND TOTAL EXPENDITURE:{C.RESET} {C.RED}{C.BOLD}₹{grand_total:>10.2f}{C.RESET}")
+        print(f" {C.BOLD}GRAND TOTAL EXPENDITURE:{C.RESET} {C.RED}{C.BOLD}{sym}{grand_total:>10.2f}{C.RESET}")
         print(f"{C.CYAN}═════════════════════════════════════════════{C.RESET}\n")
 
 
@@ -1450,6 +1636,7 @@ def peek_month_budget(month_code: str):
         print(f"{C.GRAY}Tip: Run 'yosan peek' without flags to view all available months.{C.RESET}")
         return
 
+    sym = get_cur_sym()
     active_tag = f" {C.GREEN}(CURRENT ACTIVE){C.RESET}" if target_m["is_active"] == 1 else f" {C.YELLOW}(ARCHIVED - READ ONLY){C.RESET}"
     title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name'].upper()} [{month_code}]"
     box_width = 99
@@ -1505,11 +1692,11 @@ def peek_month_budget(month_code: str):
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            base_str = f"₹{base_amt:,.2f}"
-            credit_str = f"+₹{credit_amt:,.2f}" if credit_amt > 0 else f"₹{credit_amt:,.2f}"
-            alloc_str = f"₹{alloc_amt:,.2f}"
-            spent_str = f"₹{cat_spent:,.2f}"
-            rem_str = f"₹{remaining:,.2f}" if remaining >= 0 else f"-₹{abs(remaining):,.2f}"
+            base_str = f"{sym}{base_amt:,.2f}"
+            credit_str = f"+{sym}{credit_amt:,.2f}" if credit_amt > 0 else f"{sym}{credit_amt:,.2f}"
+            alloc_str = f"{sym}{alloc_amt:,.2f}"
+            spent_str = f"{sym}{cat_spent:,.2f}"
+            rem_str = f"{sym}{remaining:,.2f}" if remaining >= 0 else f"-{sym}{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{cat_name:<13}{C.RESET} | "
@@ -1522,11 +1709,11 @@ def peek_month_budget(month_code: str):
 
         print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        tb_str = f"₹{grand_base:,.2f}"
-        tc_str = f"+₹{grand_credit:,.2f}" if grand_credit > 0 else f"₹{grand_credit:,.2f}"
-        ta_str = f"₹{grand_alloc:,.2f}"
-        ts_str = f"₹{grand_spent:,.2f}"
-        tr_str = f"₹{total_rem:,.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):,.2f}"
+        tb_str = f"{sym}{grand_base:,.2f}"
+        tc_str = f"+{sym}{grand_credit:,.2f}" if grand_credit > 0 else f"{sym}{grand_credit:,.2f}"
+        ta_str = f"{sym}{grand_alloc:,.2f}"
+        ts_str = f"{sym}{grand_spent:,.2f}"
+        tr_str = f"{sym}{total_rem:,.2f}" if total_rem >= 0 else f"-{sym}{abs(total_rem):,.2f}"
 
         print(
             f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
@@ -1538,8 +1725,10 @@ def peek_month_budget(month_code: str):
         )
         print(f"{C.CYAN}" + "═" * 101 + f"{C.RESET}\n")
 
+
 def list_all_available_months():
     init_db()
+    sym = get_cur_sym()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT month_code, month_name, total_budget, is_active FROM months ORDER BY id DESC")
@@ -1556,7 +1745,7 @@ def list_all_available_months():
     print(f"{C.GRAY}───────────────────────────────────────────────────────{C.RESET}")
     for r in rows:
         status = f"{C.GREEN}Active{C.RESET}" if r["is_active"] == 1 else f"{C.GRAY}Archived{C.RESET}"
-        print(f"{C.YELLOW}{r['month_code']:<8}{C.RESET} | {r['month_name']:<18} | {C.GREEN}₹{r['total_budget']:>10.2f}{C.RESET} | {status}")
+        print(f"{C.YELLOW}{r['month_code']:<8}{C.RESET} | {r['month_name']:<18} | {C.GREEN}{sym}{r['total_budget']:>10.2f}{C.RESET} | {status}")
     print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
     print(f"{C.GRAY}Run: yosan peek -d <code (e.g. 082026)>{C.RESET}\n")
 
@@ -1603,7 +1792,22 @@ def main():
         show_profile_view()
         return
 
+    # Route: yosan -set / yosan settings
+    if "-set" in sys.argv or "--settings" in sys.argv or "settings" in sys.argv:
+        show_settings_menu()
+        return
+
     init_db()
+
+    # Route: yosan -dl / yosan download [optional_destination]
+    if "-dl" in sys.argv or "--download" in sys.argv or "download" in sys.argv:
+        dest_dir = None
+        for arg in sys.argv[1:]:
+            if arg not in ["-dl", "--download", "download"] and not arg.startswith("-"):
+                dest_dir = arg
+                break
+        download_user_data(dest_dir)
+        return
 
     # Route: yosan -t [-d MMYYYY / MMYYYY]
     if "-t" in sys.argv or "--transactions" in sys.argv:
@@ -1644,6 +1848,7 @@ def main():
         target_cat = None
         amount_val = None
         desc_val = None
+        sym = get_cur_sym()
 
         if "-d" in sys.argv:
             d_idx = sys.argv.index("-d")
@@ -1665,7 +1870,7 @@ def main():
                 "-a", "--accessories", "-v", "--savings", "-d", desc_val,
             ]:
                 try:
-                    amount_val = float(arg.replace(",", "").replace("₹", ""))
+                    amount_val = float(arg.replace(",", "").replace(sym, "").replace("₹", ""))
                     break
                 except ValueError:
                     pass
@@ -1701,12 +1906,16 @@ def main():
     parser.add_argument("-sh", "--show-remaining", action="store_true", help="View remaining branch allowance")
     parser.add_argument("-o", "--open", action="store_true", help="Open budget book in Excel")
     parser.add_argument("-p", "--profile", action="store_true", help="View profile and account settings")
+    parser.add_argument("-set", "--settings", action="store_true", help="Open preferences and currency configuration")
+    parser.add_argument("-dl", "--download", nargs="?", const=True, help="Download ledgers and reports package")
     parser.add_argument("-logout", "--logout", action="store_true", help="Log out active session")
     parser.add_argument("-delete-account", "--delete-account", action="store_true", help="Permanently delete active account and data")
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
     subparsers.add_parser("profile", help="Manage user profile and security settings")
+    subparsers.add_parser("settings", help="Configure currency symbol, language, and CLI theme")
+    subparsers.add_parser("download", help="Export and download financial ledgers to Downloads folder")
     subparsers.add_parser("jujutsu", help="Open the Command Manual PDF")
 
     switch_parser = subparsers.add_parser("switch", help="Switch to a specific category")
@@ -1732,6 +1941,15 @@ def main():
 
     if args.profile or args.subcommand == "profile":
         show_profile_view()
+        return
+
+    if args.settings or args.subcommand == "settings":
+        show_settings_menu()
+        return
+
+    if args.download or args.subcommand == "download":
+        dest = args.download if isinstance(args.download, str) else None
+        download_user_data(dest)
         return
 
     if args.jujutsu or args.subcommand == "jujutsu":
@@ -1800,6 +2018,7 @@ def main():
         return
 
     print_remaining_balance()
+
 
 if __name__ == "__main__":
     main()
