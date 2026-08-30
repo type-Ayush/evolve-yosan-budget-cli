@@ -944,7 +944,7 @@ def create_new_budget():
                 print(f"{C.GRAY}↩ Budget creation canceled.{C.RESET}\n")
                 return
 
-            # --- OPTION 1: PERCENTAGE ALLOCATION (With Auto-Fill on Last Branch) ---
+            # --- OPTION 1: PERCENTAGE ALLOCATION (With Immediate Cap Verification) ---
             if choice == "1":
                 print(f"\n{C.GRAY}Enter percentage for each branch (Total must = 100%, 'p'=back):{C.RESET}")
                 ratios = {}
@@ -958,10 +958,10 @@ def create_new_budget():
                     remaining_p = max(0.0, round(100.0 - tot_p, 2))
 
                     while True:
-                        if is_last and remaining_p > 0:
+                        if is_last:
                             prompt_str = f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%): {remaining_p:g} (Auto-filled, Enter to accept): "
                         else:
-                            prompt_str = f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%): "
+                            prompt_str = f"  • Percentage for [{cat_color}{cat_name:<11}{C.RESET}] (%) [Max {remaining_p:g}%]: "
 
                         p_in = input(prompt_str).strip()
 
@@ -980,6 +980,10 @@ def create_new_budget():
 
                         if p < 0:
                             print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+                            continue
+
+                        if p > remaining_p:
+                            print(f"    {C.RED}❌ Value exceeds remaining limit! Maximum allowed is {remaining_p:g}%.{C.RESET}")
                             continue
 
                         ratios[cat_name] = p
@@ -1001,7 +1005,7 @@ def create_new_budget():
                 else:
                     print(f"{C.RED}❌ Percentages sum to {tot_p:.2f}%, must equal exactly 100%.{C.RESET}")
 
-            # --- OPTION 2: ABSOLUTE AMOUNT ALLOCATION (With Auto-Fill on Last Branch) ---
+            # --- OPTION 2: ABSOLUTE AMOUNT ALLOCATION (With Immediate Cap Verification) ---
             elif choice == "2":
                 print(f"\n{C.GRAY}Enter allocated ₹ amount for each branch ('p'=back):{C.RESET}")
                 tot_m = 0.0
@@ -1015,10 +1019,10 @@ def create_new_budget():
                     remaining_m = max(0.0, round(total_income - tot_m, 2))
 
                     while True:
-                        if is_last and remaining_m > 0:
-                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): {remaining_m:,.2f} (Auto-filled, Enter to accept): "
+                        if is_last:
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): ₹{remaining_m:,.2f} (Auto-filled, Enter to accept): "
                         else:
-                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹): "
+                            prompt_str = f"  • Allocated for [{cat_color}{cat_name:<11}{C.RESET}] (₹) [Max ₹{remaining_m:,.2f}]: "
 
                         val_in = input(prompt_str).strip()
 
@@ -1030,13 +1034,17 @@ def create_new_budget():
                             val = remaining_m
                         else:
                             try:
-                                val = float(val_in.replace(",", ""))
+                                val = float(val_in.replace(",", "").replace("₹", ""))
                             except ValueError:
                                 print(f"    {C.RED}❌ Numeric amount required.{C.RESET}")
                                 continue
 
                         if val < 0:
                             print(f"    {C.RED}❌ Value cannot be negative.{C.RESET}")
+                            continue
+
+                        if val > remaining_m:
+                            print(f"    {C.RED}❌ Value exceeds remaining budget! Maximum allowed is ₹{remaining_m:,.2f}.{C.RESET}")
                             continue
 
                         alloc_map[cat_name] = val
@@ -1230,7 +1238,7 @@ def continuous_interactive_entry(cat_name: str):
                 print(f"\n{C.GREEN}✅ Finished session for [{cat_name}]. (Juubun / 充分){C.RESET}")
                 return
             try:
-                amount = float(amount_str.replace(",", ""))
+                amount = float(amount_str.replace(",", "").replace("₹", ""))
                 if amount <= 0:
                     print(f"{C.RED}Amount must be greater than 0.{C.RESET}")
                     continue
@@ -1551,33 +1559,27 @@ def burn_current_budget():
 # 6. MAIN ROUTING
 # ==========================================
 def main():
-    # 1. Public Command: Jujutsu Manual (Available even if logged out)
     if "-jujutsu" in sys.argv or "--jujutsu" in sys.argv or "jujutsu" in sys.argv:
         generate_jujutsu_manual()
         return
 
-    # 2. Handle manual logout
     if "-logout" in sys.argv or "--logout" in sys.argv:
         clear_session()
         return
 
-    # 3. Handle manual account deletion
     if "-delete-account" in sys.argv or "--delete-account" in sys.argv or "-delete" in sys.argv:
         delete_account_flow()
         return
 
-    # 4. Master Authentication Gate
     if not require_login():
         sys.exit(1)
 
-    # 5. Intercept profile shortcut
     if "-p" in sys.argv or "--profile" in sys.argv or "profile" in sys.argv:
         show_profile_view()
         return
 
     init_db()
 
-    # 6. Intercept report command: yosan -report [optional_month_code]
     if "-report" in sys.argv or "--report" in sys.argv:
         target_code = None
         for arg in sys.argv[1:]:
@@ -1587,7 +1589,6 @@ def main():
         export_monthly_report(target_code)
         return
 
-    # 7. Intercept quick update / top-up: yosan -u [branch] [amount] -d [description]
     if "-u" in sys.argv or "--update" in sys.argv:
         active_m = get_active_month()
         if not active_m:
@@ -1619,7 +1620,7 @@ def main():
                 "-a", "--accessories", "-v", "--savings", "-d", desc_val,
             ]:
                 try:
-                    amount_val = float(arg.replace(",", ""))
+                    amount_val = float(arg.replace(",", "").replace("₹", ""))
                     break
                 except ValueError:
                     pass
