@@ -34,6 +34,33 @@ class C:
 
 
 # ==========================================
+# 🔲 DYNAMIC BOX BANNER (Mathematically Aligned)
+# ==========================================
+def print_box_banner(title: str, subtitle: str = "", color: str = C.CYAN, width: int = 56):
+    """Dynamically generates perfectly aligned box banners with zero border overhang."""
+    top_border = f"\n{color}╔" + ("═" * width) + f"╗{C.RESET}"
+    bottom_border = f"{color}╚" + ("═" * width) + f"╝{C.RESET}"
+
+    # Title Line
+    t_spaces = max(0, width - len(title))
+    t_left = t_spaces // 2
+    t_right = t_spaces - t_left
+    title_line = f"{color}║{C.RESET}{' ' * t_left}{C.BOLD}{C.WHITE}{title}{C.RESET}{' ' * t_right}{color}║{C.RESET}"
+
+    print(top_border)
+    print(title_line)
+
+    if subtitle:
+        s_spaces = max(0, width - len(subtitle))
+        s_left = s_spaces // 2
+        s_right = s_spaces - s_left
+        sub_line = f"{color}║{C.RESET}{' ' * s_left}{C.GRAY}{subtitle}{C.RESET}{' ' * s_right}{color}║{C.RESET}"
+        print(sub_line)
+
+    print(bottom_border)
+
+
+# ==========================================
 # ⏳ ANIMATED SPINNER
 # ==========================================
 class Spinner:
@@ -94,10 +121,6 @@ def check_cloud_email_status(email_addr: str) -> bool:
 
 
 def evaluate_password_strength(pw: str) -> tuple[int, str]:
-    """
-    Evaluates password complexity:
-    Returns (score 0-4, formatted live badge string).
-    """
     if not pw:
         return 0, ""
 
@@ -114,7 +137,7 @@ def evaluate_password_strength(pw: str) -> tuple[int, str]:
     if len(pw) < 8 or score <= 1:
         badge = f" {C.RED}🔴 [Weak: 8+ chars required]{C.RESET}"
     elif score == 2:
-        badge = f" {C.YELLOW}🟡 [Fair: Add Uppercase/Digit/Symbol]{C.RESET}"
+        badge = f" {C.YELLOW}🟡 [Fair: Add Upper/Digit/Symbol]{C.RESET}"
     elif score == 3:
         badge = f" {C.YELLOW}🟡 [Moderate: Add Missing Requirement]{C.RESET}"
     else:
@@ -127,11 +150,6 @@ def evaluate_password_strength(pw: str) -> tuple[int, str]:
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
 def masked_password_input(prompt: str, match_against: str = None, check_strength: bool = False) -> str:
-    """
-    Captures password keystroke-by-keystroke rendering '*' in real-time.
-    If check_strength=True, renders live strength indicator (Weak/Moderate/Strong).
-    If match_against is provided, dynamically shows ✔ [Match] or ✖ [Mismatch] live badge.
-    """
     colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
     sys.stdout.write(f"\r{colored_prompt}\033[K")
     sys.stdout.flush()
@@ -189,7 +207,6 @@ def masked_password_input(prompt: str, match_against: str = None, check_strength
         elif ch.isprintable():
             buffer.append(ch)
 
-        # Dynamic real-time badge updates
         current_text = "".join(buffer)
         badge = ""
         if current_text.lower() not in ["b", "back"]:
@@ -219,7 +236,6 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
     while True:
         current_text = "".join(buffer)
 
-        # Trigger check 1.0s after typing pauses (Debounced)
         if (
             current_text
             and current_text != checked_str
@@ -318,7 +334,6 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
 
 
 def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
-    """Provides real-time interactive database duplicate verification for emails."""
     buffer = []
     last_keystroke_time = time.time()
     checked_str = None
@@ -332,7 +347,6 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
     while True:
         current_text = "".join(buffer).strip().lower()
 
-        # Trigger check 1.0s after typing pauses (Debounced)
         if (
             current_text
             and current_text != checked_str
@@ -483,10 +497,11 @@ def clear_session():
 # 🚀 AUTHENTICATION FLOWS
 # ==========================================
 def register_flow() -> bool:
-    print(f"\n{C.CYAN}╔════════════════════════════════════════════════════════╗")
-    print(f"║               {C.BOLD}{C.WHITE}YOSAN CLOUD REGISTRATION{C.RESET}{C.CYAN}                 ║")
-    print(f"║       {C.GRAY}(Type \"b\" or \"back\" at any point to cancel){C.RESET}{C.CYAN}       ║")
-    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
+    print_box_banner(
+        title="YOSAN CLOUD REGISTRATION",
+        subtitle='(Type "b" or "back" at any point to cancel)',
+        color=C.CYAN
+    )
 
     username = live_username_input("Enter Desired Username: ", check_mode="must_be_available")
     if username == "BACK":
@@ -595,10 +610,11 @@ def login_flow() -> bool:
 
 
 def forgot_password_flow():
-    print(f"\n{C.PURPLE}╔════════════════════════════════════════════════════════╗")
-    print(f"║            {C.BOLD}{C.WHITE}YOSAN CLOUD - PASSWORD RECOVERY{C.RESET}{C.PURPLE}             ║")
-    print(f"║             {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}              ║")
-    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
+    print_box_banner(
+        title="YOSAN CLOUD - PASSWORD RECOVERY",
+        subtitle="(Type 'b' or 'back' to return)",
+        color=C.PURPLE
+    )
 
     username = live_username_input("Enter Username: ", check_mode="must_exist")
     if username == "BACK":
@@ -661,10 +677,11 @@ def forgot_password_flow():
 
 
 def forgot_username_flow():
-    print(f"\n{C.PURPLE}╔════════════════════════════════════════════════════════╗")
-    print(f"║            {C.BOLD}{C.WHITE}YOSAN CLOUD - USERNAME RECOVERY{C.RESET}{C.PURPLE}             ║")
-    print(f"║             {C.GRAY}(Type 'b' or 'back' to return){C.RESET}{C.PURPLE}              ║")
-    print(f"╚════════════════════════════════════════════════════════╝{C.RESET}")
+    print_box_banner(
+        title="YOSAN CLOUD - USERNAME RECOVERY",
+        subtitle="(Type 'b' or 'back' to return)",
+        color=C.PURPLE
+    )
 
     email = live_email_input("Enter Registered Email Address: ", check_mode="must_exist")
     if email == "BACK":
@@ -771,9 +788,7 @@ def show_profile_view():
     local_xl = Path.home() / "Documents" / f"budget_book_{safe_name}.xlsx"
 
     while True:
-        print(f"\n{C.CYAN}╔══════════════════════════════════════════════════════════╗")
-        print(f"║                {C.BOLD}{C.WHITE}YOSAN USER ACCOUNT PROFILE{C.RESET}{C.CYAN}                ║")
-        print(f"╚══════════════════════════════════════════════════════════╝{C.RESET}")
+        print_box_banner(title="YOSAN USER ACCOUNT PROFILE", color=C.CYAN)
         print(f" {C.CYAN}•{C.RESET} {C.BOLD}Username{C.RESET}          : {C.GREEN}{user_info['username']}{C.RESET}")
         print(f" {C.CYAN}•{C.RESET} {C.BOLD}Registered Email{C.RESET}  : {C.WHITE}{user_info['email']}{C.RESET}")
         print(f" {C.CYAN}•{C.RESET} {C.BOLD}Account Created{C.RESET}   : {C.GRAY}{user_info['created_at']}{C.RESET}")
@@ -833,9 +848,7 @@ def require_login() -> bool:
         return True
 
     while True:
-        print(f"\n{C.CYAN}╔════════════════════════════════════════════════╗")
-        print(f"║      {C.BOLD}{C.WHITE}YOSAN CLOUD ACCESS - AUTHENTICATION{C.RESET}{C.CYAN}       ║")
-        print(f"╚════════════════════════════════════════════════╝{C.RESET}")
+        print_box_banner(title="YOSAN CLOUD ACCESS - AUTHENTICATION", color=C.CYAN)
         print(f"  {C.CYAN}[1]{C.RESET} Log In")
         print(f"  {C.CYAN}[2]{C.RESET} Sign Up {C.GRAY}(New Account + Email OTP){C.RESET}")
         print(f"  {C.CYAN}[3]{C.RESET} Forgot Password {C.GRAY}(Email OTP Recovery){C.RESET}")
