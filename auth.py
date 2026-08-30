@@ -96,30 +96,68 @@ def check_cloud_email_status(email_addr: str) -> bool:
 # ==========================================
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
-def masked_password_input(prompt: str) -> str:
-    """Captures password keystroke-by-keystroke rendering '*' in real-time."""
+def masked_password_input(prompt: str, match_against: str = None) -> str:
+    """
+    Captures password keystroke-by-keystroke rendering '*' in real-time.
+    If match_against is provided, dynamically shows ✔ [Match] or ✖ [Mismatch] live badge.
+    """
     colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
-    sys.stdout.write(colored_prompt)
+    sys.stdout.write(f"\r{colored_prompt}\033[K")
     sys.stdout.flush()
     buffer = []
 
     while True:
         ch = msvcrt.getwch()
+        current_text = "".join(buffer)
+
         if ch in ("\r", "\n"):
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            return "".join(buffer)
+            if not current_text:
+                continue
+
+            if current_text.lower() in ["b", "back"]:
+                sys.stdout.write("\n")
+                return "BACK"
+
+            if match_against is not None:
+                if current_text == match_against:
+                    sys.stdout.write(f"\r{colored_prompt}{'*' * len(buffer)} {C.GREEN}✔ [Match]{C.RESET}\033[K\n")
+                    sys.stdout.flush()
+                    return current_text
+                else:
+                    sys.stdout.write(f"\r{colored_prompt}{'*' * len(buffer)} {C.RED}✖ [Mismatch]{C.RESET}\033[K\n")
+                    print(f"  {C.RED}└─ ❌ Passwords do not match. Try again.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    buffer = []
+                    sys.stdout.write(f"\r{colored_prompt}\033[K")
+                    sys.stdout.flush()
+                    continue
+            else:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return current_text
+
         elif ch in ("\x08", "\b"):
             if buffer:
                 buffer.pop()
-                sys.stdout.write("\b \b")
-                sys.stdout.flush()
+
         elif ch == "\x03":
             sys.exit(0)
+
         elif ch.isprintable():
             buffer.append(ch)
-            sys.stdout.write("*")
-            sys.stdout.flush()
+
+        # Re-render line with real-time match badge
+        current_text = "".join(buffer)
+        badge = ""
+        if match_against is not None and current_text:
+            if current_text.lower() in ["b", "back"]:
+                badge = ""
+            elif current_text == match_against:
+                badge = f" {C.GREEN}✔ [Match]{C.RESET}"
+            else:
+                badge = f" {C.RED}✖ [Mismatch]{C.RESET}"
+
+        sys.stdout.write(f"\r{colored_prompt}{'*' * len(buffer)}{badge}\033[K")
+        sys.stdout.flush()
 
 
 def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
@@ -416,19 +454,24 @@ def register_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    password = masked_password_input("Enter Password: ")
-    if password in ["b", "back"]:
-        print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
-        return False
+    # Password loop with interactive real-time match validation
+    while True:
+        password = masked_password_input("Enter Password: ")
+        if password == "BACK":
+            print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
+            return False
 
-    confirm_pw = masked_password_input("Confirm Password: ")
-    if confirm_pw in ["b", "back"]:
-        print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
-        return False
+        if len(password) < 6:
+            print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.GRAY} (Type 'b' to go back){C.RESET}")
+            continue
 
-    if password != confirm_pw:
-        print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
-        return False
+        confirm_pw = masked_password_input("Confirm Password: ", match_against=password)
+        if confirm_pw == "BACK":
+            print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
+            return False
+
+        if confirm_pw == password:
+            break
 
     try:
         with Spinner("Dispatched OTP request... Generating code"):
@@ -482,7 +525,7 @@ def login_flow() -> bool:
         return False
 
     password = masked_password_input("Password: ")
-    if password in ["b", "back"]:
+    if password == "BACK":
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
@@ -540,19 +583,24 @@ def forgot_password_flow():
 
         print(f"\n{C.GREEN}📨 {res.json()['message']}{C.RESET}")
 
-        # Interactive OTP & Password Reset Retry Loop
         while True:
             otp = input(f"{C.YELLOW}Enter 6-digit OTP from email: {C.RESET}").strip()
             if otp in ["b", "back"]:
                 return
 
             new_pw = masked_password_input("Enter New Password: ")
-            if new_pw in ["b", "back"]:
+            if new_pw == "BACK":
                 return
 
-            confirm_pw = masked_password_input("Confirm New Password: ")
-            if new_pw != confirm_pw:
-                print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
+            if len(new_pw) < 6:
+                print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.RESET}")
+                continue
+
+            confirm_pw = masked_password_input("Confirm New Password: ", match_against=new_pw)
+            if confirm_pw == "BACK":
+                return
+
+            if confirm_pw != new_pw:
                 continue
 
             with Spinner("Updating cloud security credentials..."):
@@ -620,7 +668,7 @@ def delete_account_flow():
         return
 
     password = masked_password_input("Enter your current password to confirm: ")
-    if password.lower() in ["b", "back"]:
+    if password == "BACK":
         print(f"{C.GRAY}❌ Deletion canceled.{C.RESET}\n")
         return
 
@@ -705,15 +753,22 @@ def show_profile_view():
 
         if choice == "1":
             old_pw = masked_password_input("Enter current password: ")
-            if old_pw.lower() in ["b", "back"]:
+            if old_pw == "BACK":
                 continue
+
             new_pw = masked_password_input("Enter new password: ")
-            if new_pw.lower() in ["b", "back"]:
+            if new_pw == "BACK":
                 continue
-            confirm_pw = masked_password_input("Confirm new password: ")
+
+            if len(new_pw) < 6:
+                print(f"  {C.RED}└─ ❌ Password must be at least 6 characters.{C.RESET}")
+                continue
+
+            confirm_pw = masked_password_input("Confirm new password: ", match_against=new_pw)
+            if confirm_pw == "BACK":
+                continue
 
             if new_pw != confirm_pw:
-                print(f"{C.RED}❌ Passwords do not match.{C.RESET}")
                 continue
 
             try:
