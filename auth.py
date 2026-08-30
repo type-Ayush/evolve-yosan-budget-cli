@@ -174,11 +174,11 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
     while True:
         current_text = "".join(buffer)
 
-        # Trigger check 0.35s after typing pauses
+        # Trigger check 1.0s after typing pauses (Debounced)
         if (
             current_text
             and current_text != checked_str
-            and (time.time() - last_keystroke_time >= 0.35)
+            and (time.time() - last_keystroke_time >= 1.0)
         ):
             if current_text.lower() in ["b", "back"]:
                 badge = ""
@@ -188,14 +188,16 @@ def live_username_input(prompt: str, check_mode: str = "must_exist") -> str:
             else:
                 # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
+                interrupted = False
                 for frame in frames:
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {C.GRAY}{frame}{C.RESET}\033[K")
                     sys.stdout.flush()
-                    time.sleep(0.08)
+                    time.sleep(0.1)
                     if msvcrt.kbhit():
+                        interrupted = True
                         break
 
-                if not msvcrt.kbhit():
+                if not interrupted and not msvcrt.kbhit():
                     exists = check_cloud_username(current_text)
                     if check_mode == "must_exist":
                         is_valid = exists
@@ -287,11 +289,11 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
     while True:
         current_text = "".join(buffer).strip().lower()
 
-        # Trigger check 0.35s after typing pauses
+        # Trigger check 1.0s after typing pauses (Debounced)
         if (
             current_text
             and current_text != checked_str
-            and (time.time() - last_keystroke_time >= 0.35)
+            and (time.time() - last_keystroke_time >= 1.0)
         ):
             if current_text in ["b", "back"]:
                 badge = ""
@@ -305,14 +307,16 @@ def live_email_input(prompt: str, check_mode: str = "must_be_available") -> str:
             else:
                 # 🔄 Active animated checking dots
                 frames = [".  ", ".. ", "..."]
+                interrupted = False
                 for frame in frames:
                     sys.stdout.write(f"\r{colored_prompt}{C.WHITE}{current_text}{C.RESET} {C.GRAY}{frame}{C.RESET}\033[K")
                     sys.stdout.flush()
-                    time.sleep(0.08)
+                    time.sleep(0.1)
                     if msvcrt.kbhit():
+                        interrupted = True
                         break
 
-                if not msvcrt.kbhit():
+                if not interrupted and not msvcrt.kbhit():
                     exists = check_cloud_email_status(current_text)
                     if check_mode == "must_be_available":
                         is_valid = not exists
@@ -454,7 +458,6 @@ def register_flow() -> bool:
         print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
         return False
 
-    # Password loop with interactive real-time match validation
     while True:
         password = masked_password_input("Enter Password: ")
         if password == "BACK":
@@ -487,7 +490,6 @@ def register_flow() -> bool:
 
         print(f"\n{C.GREEN}📨 {res.json()['message']}{C.RESET}")
 
-        # Interactive OTP Retry Loop
         while True:
             otp = input(f"{C.YELLOW}Enter 6-digit OTP code sent to your inbox: {C.RESET}").strip()
             if otp in ["b", "back"]:
