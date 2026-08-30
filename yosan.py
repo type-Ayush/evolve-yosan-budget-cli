@@ -1273,9 +1273,9 @@ def print_remaining_balance():
         peek_month_budget(latest_m["month_code"])
         return
 
+    # Total width of the table is exactly 101 characters
     title_text = f"REMAINING BUDGET BREAKDOWN ({active_m['month_name'].upper()}) [ACTIVE]"
-    box_width = 83  # Symmetrical 85 chars total frame
-
+    box_width = 99
     t_spaces = max(0, box_width - len(title_text))
     t_l = t_spaces // 2
     t_r = t_spaces - t_l
@@ -1284,8 +1284,10 @@ def print_remaining_balance():
     print(f"{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
     print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
-    print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
-    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+
+    # Fixed Column Layout: Branch(13) | Base(15) | Credited(13) | Total Alloc(17) | Spent(15) | Remaining(16)
+    print(f"{C.BOLD}{'Branch':<13} | {'Base':>15} | {'Credited':>13} | {'Total Alloc':>17} | {'Spent':>15} | {'Remaining':>16}{C.RESET}")
+    print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1328,38 +1330,38 @@ def print_remaining_balance():
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            base_str = f"₹{base_amt:>10.2f}"
-            credit_str = f"+₹{credit_amt:>8.2f}" if credit_amt > 0 else f"₹{credit_amt:>8.2f}"
-            alloc_str = f"₹{alloc_amt:>12.2f}"
-            spent_str = f"₹{cat_spent:>10.2f}"
-            rem_str = f"₹{remaining:>11.2f}" if remaining >= 0 else f"-₹{abs(remaining):>10.2f}"
+            base_str = f"₹{base_amt:,.2f}"
+            credit_str = f"+₹{credit_amt:,.2f}" if credit_amt > 0 else f"₹{credit_amt:,.2f}"
+            alloc_str = f"₹{alloc_amt:,.2f}"
+            spent_str = f"₹{cat_spent:,.2f}"
+            rem_str = f"₹{remaining:,.2f}" if remaining >= 0 else f"-₹{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{cat_name:<13}{C.RESET} | "
-                f"{C.WHITE}{base_str}{C.RESET} | "
-                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str}{C.RESET} | "
-                f"{C.CYAN}{alloc_str}{C.RESET} | "
-                f"{C.RED}{spent_str}{C.RESET} | "
-                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
+                f"{C.WHITE}{base_str:>15}{C.RESET} | "
+                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
+                f"{C.CYAN}{alloc_str:>17}{C.RESET} | "
+                f"{C.RED}{spent_str:>15}{C.RESET} | "
+                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str:>16}{C.RESET}"
             )
 
-        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        tb_str = f"₹{grand_base:>10.2f}"
-        tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
-        ta_str = f"₹{grand_alloc:>12.2f}"
-        ts_str = f"₹{grand_spent:>10.2f}"
-        tr_str = f"₹{total_rem:>11.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):>10.2f}"
+        tb_str = f"₹{grand_base:,.2f}"
+        tc_str = f"+₹{grand_credit:,.2f}" if grand_credit > 0 else f"₹{grand_credit:,.2f}"
+        ta_str = f"₹{grand_alloc:,.2f}"
+        ts_str = f"₹{grand_spent:,.2f}"
+        tr_str = f"₹{total_rem:,.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):,.2f}"
 
         print(
             f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
-            f"{C.YELLOW}{tb_str}{C.RESET} | "
-            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str}{C.RESET} | "
-            f"{C.CYAN}{ta_str}{C.RESET} | "
-            f"{C.RED}{ts_str}{C.RESET} | "
-            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
+            f"{C.YELLOW}{tb_str:>15}{C.RESET} | "
+            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str:>13}{C.RESET} | "
+            f"{C.CYAN}{ta_str:>17}{C.RESET} | "
+            f"{C.RED}{ts_str:>15}{C.RESET} | "
+            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str:>16}{C.RESET}"
         )
-        print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+        print(f"{C.CYAN}" + "═" * 101 + f"{C.RESET}\n")
 
 
 def show_transaction_ledger(month_code: str = None):
@@ -1449,8 +1451,7 @@ def peek_month_budget(month_code: str):
 
     active_tag = f" {C.GREEN}(CURRENT ACTIVE){C.RESET}" if target_m["is_active"] == 1 else f" {C.YELLOW}(ARCHIVED - READ ONLY){C.RESET}"
     title_text = f"PEEK HISTORICAL BUDGET: {target_m['month_name'].upper()} [{month_code}]"
-    box_width = 83
-
+    box_width = 99
     t_spaces = max(0, box_width - len(title_text))
     t_l = t_spaces // 2
     t_r = t_spaces - t_l
@@ -1459,8 +1460,8 @@ def peek_month_budget(month_code: str):
     print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
     print(f"Status: {active_tag}")
-    print(f"{C.BOLD}{'Branch':<13} | {'Base':>11} | {'Credited':>10} | {'Total Alloc':>13} | {'Spent':>11} | {'Remaining':>12}{C.RESET}")
-    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    print(f"{C.BOLD}{'Branch':<13} | {'Base':>15} | {'Credited':>13} | {'Total Alloc':>17} | {'Spent':>15} | {'Remaining':>16}{C.RESET}")
+    print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1503,39 +1504,38 @@ def peek_month_budget(month_code: str):
             grand_spent += cat_spent
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-            base_str = f"₹{base_amt:>10.2f}"
-            credit_str = f"+₹{credit_amt:>8.2f}" if credit_amt > 0 else f"₹{credit_amt:>8.2f}"
-            alloc_str = f"₹{alloc_amt:>12.2f}"
-            spent_str = f"₹{cat_spent:>10.2f}"
-            rem_str = f"₹{remaining:>11.2f}" if remaining >= 0 else f"-₹{abs(remaining):>10.2f}"
+            base_str = f"₹{base_amt:,.2f}"
+            credit_str = f"+₹{credit_amt:,.2f}" if credit_amt > 0 else f"₹{credit_amt:,.2f}"
+            alloc_str = f"₹{alloc_amt:,.2f}"
+            spent_str = f"₹{cat_spent:,.2f}"
+            rem_str = f"₹{remaining:,.2f}" if remaining >= 0 else f"-₹{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{cat_name:<13}{C.RESET} | "
-                f"{C.WHITE}{base_str}{C.RESET} | "
-                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str}{C.RESET} | "
-                f"{C.CYAN}{alloc_str}{C.RESET} | "
-                f"{C.RED}{spent_str}{C.RESET} | "
-                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str}{C.RESET}"
+                f"{C.WHITE}{base_str:>15}{C.RESET} | "
+                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
+                f"{C.CYAN}{alloc_str:>17}{C.RESET} | "
+                f"{C.RED}{spent_str:>15}{C.RESET} | "
+                f"{C.GREEN if remaining >= 0 else C.RED}{rem_str:>16}{C.RESET}"
             )
 
-        print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+        print(f"{C.GRAY}" + "─" * 101 + f"{C.RESET}")
         total_rem = grand_alloc - grand_spent
-        tb_str = f"₹{grand_base:>10.2f}"
-        tc_str = f"+₹{grand_credit:>8.2f}" if grand_credit > 0 else f"₹{grand_credit:>8.2f}"
-        ta_str = f"₹{grand_alloc:>12.2f}"
-        ts_str = f"₹{grand_spent:>10.2f}"
-        tr_str = f"₹{total_rem:>11.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):>10.2f}"
+        tb_str = f"₹{grand_base:,.2f}"
+        tc_str = f"+₹{grand_credit:,.2f}" if grand_credit > 0 else f"₹{grand_credit:,.2f}"
+        ta_str = f"₹{grand_alloc:,.2f}"
+        ts_str = f"₹{grand_spent:,.2f}"
+        tr_str = f"₹{total_rem:,.2f}" if total_rem >= 0 else f"-₹{abs(total_rem):,.2f}"
 
         print(
             f"{C.BOLD}{'TOTAL':<13}{C.RESET} | "
-            f"{C.YELLOW}{tb_str}{C.RESET} | "
-            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str}{C.RESET} | "
-            f"{C.CYAN}{ta_str}{C.RESET} | "
-            f"{C.RED}{ts_str}{C.RESET} | "
-            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str}{C.RESET}"
+            f"{C.YELLOW}{tb_str:>15}{C.RESET} | "
+            f"{C.GREEN if grand_credit > 0 else C.GRAY}{tc_str:>13}{C.RESET} | "
+            f"{C.CYAN}{ta_str:>17}{C.RESET} | "
+            f"{C.RED}{ts_str:>15}{C.RESET} | "
+            f"{C.GREEN if total_rem >= 0 else C.RED}{C.BOLD}{tr_str:>16}{C.RESET}"
         )
-        print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
-
+        print(f"{C.CYAN}" + "═" * 101 + f"{C.RESET}\n")
 
 def list_all_available_months():
     init_db()
