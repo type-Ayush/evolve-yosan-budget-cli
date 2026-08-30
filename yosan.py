@@ -174,16 +174,14 @@ def show_settings_menu():
         lang = cfg.get("language", "en")
         theme = cfg.get("color_theme", "cyber_cyan")
 
-        # 65-character exact symmetrical banner
         box_width = 65
         title_text = "YOSAN CLI PREFERENCES & SETTINGS"
-        # 31 chars title + 2 chars icon display width = 33 display width
-        t_spaces = box_width - (len(title_text) + 2)
+        t_spaces = box_width - len(title_text)
         t_l = t_spaces // 2
         t_r = t_spaces - t_l
 
         print(f"\n{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
-        print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}⚙ {title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
+        print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{title_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
         print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
         print(f"  {C.CYAN}[1]{C.RESET} Currency Notation    : {C.GREEN}{sym} ({code}){C.RESET}")
         print(f"  {C.CYAN}[2]{C.RESET} Display Language     : {C.YELLOW}{lang.upper()}{C.RESET}")
@@ -254,7 +252,11 @@ def show_settings_menu():
 
         elif ch in ["5", "", "b", "back", "q", "exit"]:
             break
-        
+
+
+# ==========================================
+# DATA DOWNLOAD & BACKUP PACKAGER
+# ==========================================
 def download_user_data(target_path: str = None):
     init_db()
     sync_to_excel()
@@ -286,15 +288,21 @@ def download_user_data(target_path: str = None):
             shutil.copy2(report_file, dest)
             files_exported.append(dest)
 
-    print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════════════════════════╗{C.RESET}")
-    print(f"{C.CYAN}║{C.RESET}                     {C.BOLD}{C.WHITE}📦 YOSAN DATA PACKAGE EXPORTED SUCCESSFULLY{C.RESET}                     {C.CYAN}║{C.RESET}")
-    print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════════════════════════╝{C.RESET}")
+    box_width = 85
+    header_text = "YOSAN DATA PACKAGE EXPORTED SUCCESSFULLY"
+    t_spaces = box_width - len(header_text)
+    t_l = t_spaces // 2
+    t_r = t_spaces - t_l
+
+    print(f"\n{C.CYAN}╔" + ("═" * box_width) + f"╗{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}{' ' * t_l}{C.BOLD}{C.WHITE}{header_text}{C.RESET}{' ' * t_r}{C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
     print(f"  {C.CYAN}•{C.RESET} Export Location : {C.GREEN}{export_folder}{C.RESET}")
     print(f"  {C.CYAN}•{C.RESET} Files Packaged  : {C.YELLOW}{len(files_exported)} files{C.RESET}")
-    print(f"{C.GRAY}─────────────────────────────────────────────────────────────────────────────────────{C.RESET}")
+    print(f"{C.GRAY}" + "─" * (box_width + 2) + f"{C.RESET}")
     for f in files_exported:
         print(f"    ✔ {C.WHITE}{f.name}{C.RESET}")
-    print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}\n")
+    print(f"{C.CYAN}" + "═" * (box_width + 2) + f"{C.RESET}\n")
 
     try:
         os.startfile(export_folder)
@@ -483,7 +491,7 @@ def sync_to_excel():
 
             remaining = alloc_amt - spent_amt
             grand_base += base_amt
-            grand_credit += credit_amt
+            grand_credit += credited_amt
             grand_alloc += alloc_amt
             grand_spent += spent_amt
 
@@ -1525,7 +1533,7 @@ def print_remaining_balance():
         peek_month_budget(latest_m["month_code"])
         return
 
-    # Total width of table: 101 characters
+    # Total width of table: 101 characters (box_width = 99)
     title_text = f"{t['title']} ({active_m['month_name'].upper()}) [{t['active']}]"
     box_width = 99
     t_spaces = max(0, box_width - len(title_text))
@@ -1566,34 +1574,34 @@ def print_remaining_balance():
                 (active_m["id"], cat_name),
             )
             topup_row = cursor.fetchone()
-            credit_amt = topup_row["total"] if topup_row["total"] else 0.0
+            credited_amt = topup_row["total"] if topup_row["total"] else 0.0
 
             cursor.execute(
                 "SELECT SUM(amount) AS total FROM transactions WHERE month_id = ? AND branch = ?",
                 (active_m["id"], cat_name),
             )
             spent_row = cursor.fetchone()
-            cat_spent = spent_row["total"] if spent_row["total"] else 0.0
+            spent_amt = spent_row["total"] if spent_row["total"] else 0.0
 
-            remaining = alloc_amt - cat_spent
+            remaining = alloc_amt - spent_amt
             grand_base += base_amt
-            grand_credit += credit_amt
+            grand_credit += credited_amt
             grand_alloc += alloc_amt
-            grand_spent += cat_spent
+            grand_spent += spent_amt
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
             display_cat = t["categories"].get(cat_name, cat_name)
 
             base_str = f"{sym}{base_amt:,.2f}"
-            credit_str = f"+{sym}{credit_amt:,.2f}" if credit_amt > 0 else f"{sym}{credit_amt:,.2f}"
+            credit_str = f"+{sym}{credited_amt:,.2f}" if credited_amt > 0 else f"{sym}{credited_amt:,.2f}"
             alloc_str = f"{sym}{alloc_amt:,.2f}"
-            spent_str = f"{sym}{cat_spent:,.2f}"
+            spent_str = f"{sym}{spent_amt:,.2f}"
             rem_str = f"{sym}{remaining:,.2f}" if remaining >= 0 else f"-{sym}{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{display_cat:<13}{C.RESET} | "
                 f"{C.WHITE}{base_str:>15}{C.RESET} | "
-                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
+                f"{C.GREEN if credited_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
                 f"{C.CYAN}{alloc_str:>17}{C.RESET} | "
                 f"{C.RED}{spent_str:>15}{C.RESET} | "
                 f"{C.GREEN if remaining >= 0 else C.RED}{rem_str:>16}{C.RESET}"
@@ -1745,32 +1753,32 @@ def peek_month_budget(month_code: str):
                 (target_m["id"], cat_name),
             )
             topup_row = cursor.fetchone()
-            credit_amt = topup_row["total"] if topup_row["total"] else 0.0
+            credited_amt = topup_row["total"] if topup_row["total"] else 0.0
 
             cursor.execute(
                 "SELECT SUM(amount) AS total FROM transactions WHERE month_id = ? AND branch = ?",
                 (target_m["id"], cat_name),
             )
             stats_row = cursor.fetchone()
-            cat_spent = stats_row["total"] if stats_row["total"] else 0.0
+            spent_amt = stats_row["total"] if stats_row["total"] else 0.0
 
-            remaining = alloc_amt - cat_spent
+            remaining = alloc_amt - spent_amt
             grand_base += base_amt
-            grand_credit += credit_amt
+            grand_credit += credited_amt
             grand_alloc += alloc_amt
-            grand_spent += cat_spent
+            grand_spent += spent_amt
 
             cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
             base_str = f"{sym}{base_amt:,.2f}"
-            credit_str = f"+{sym}{credit_amt:,.2f}" if credit_amt > 0 else f"{sym}{credit_amt:,.2f}"
+            credit_str = f"+{sym}{credited_amt:,.2f}" if credited_amt > 0 else f"{sym}{credited_amt:,.2f}"
             alloc_str = f"{sym}{alloc_amt:,.2f}"
-            spent_str = f"{sym}{cat_spent:,.2f}"
+            spent_str = f"{sym}{spent_amt:,.2f}"
             rem_str = f"{sym}{remaining:,.2f}" if remaining >= 0 else f"-{sym}{abs(remaining):,.2f}"
 
             print(
                 f"{cat_color}{cat_name:<13}{C.RESET} | "
                 f"{C.WHITE}{base_str:>15}{C.RESET} | "
-                f"{C.GREEN if credit_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
+                f"{C.GREEN if credited_amt > 0 else C.GRAY}{credit_str:>13}{C.RESET} | "
                 f"{C.CYAN}{alloc_str:>17}{C.RESET} | "
                 f"{C.RED}{spent_str:>15}{C.RESET} | "
                 f"{C.GREEN if remaining >= 0 else C.RED}{rem_str:>16}{C.RESET}"
