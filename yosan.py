@@ -736,11 +736,11 @@ def generate_jujutsu_manual():
 
     commands = [
         ("yosan", "Displays the live Remaining Budget breakdown and status of the current active month."),
-        ("yosan -t, --transactions", "Prints itemized transaction and top-up log for the current or specified month."),
+        ("yosan -t, --transactions", "Prints itemized transaction ledger for the active cycle or historical month ('-d MMYYYY')."),
         ("yosan switch [flag]", "Enters continuous entry mode for a category branch. Type 'yosan -juubun' to exit."),
         ("yosan switch [flag] -d \"...\" -val X", "One-line quick entry to log an expense directly to cloud/local ledger."),
         ("yosan -u [flag] [amt] -d \"...\"", "Credits / Adds money to a branch budget and increases overall monthly allowance."),
-        ("yosan -new", "Launches the Interactive Multi-Step Wizard ('p' for previous step, 'b' to cancel)."),
+        ("yosan -new", "Launches Multi-Step Wizard with live auto-fill and boundary caps ('p'=prev, 'b'=abort)."),
         ("yosan -p, yosan profile", "Opens profile dashboard (view account info, change password, delete account)."),
         ("yosan -burn", "Permanently finalizes and locks the active budget cycle into Read-Only mode."),
         ("yosan -report [code]", "Exports formatted Text and styled A4 PDF financial statements for any month."),
@@ -796,13 +796,14 @@ def generate_jujutsu_manual():
     story.append(t_branch)
     story.append(Spacer(1, 14))
 
-    story.append(Paragraph("INTERACTIVE WIZARD & JUUBUN LOGGING", section_title))
+    story.append(Paragraph("OPERATIONAL FEATURES & SECURITY ARCHITECTURE", section_title))
     story.append(Spacer(1, 4))
     story.append(
         Paragraph(
-            "• <b>New Budget Wizard ('yosan -new')</b>: Supports non-destructive step navigation. Enter <b>'p'</b> or <b>'prev'</b> to return to previous steps or <b>'b'</b> / <b>'cancel'</b> to abort.<br/>"
-            "• <b>Continuous Logging ('yosan switch -m')</b>: Enter sequential descriptions and amounts continuously. Type <b>'yosan -juubun'</b> or <b>'exit'</b> to finish.<br/>"
-            "• <b>Transaction Log ('yosan -t')</b>: View all itemized expenses and top-up credits cleanly isolated on demand.",
+            "• <b>Smart Wizard ('yosan -new')</b>: Features live boundary protection preventing entry over the maximum remaining limit, auto-fills the remaining balance on the final branch, and renders the live dashboard upon creation.<br/>"
+            "• <b>Transaction Inspection ('yosan -t [-d MMYYYY]')</b>: Isolates the itemized debit/credit logs so the primary dashboard remains clean and focused.<br/>"
+            "• <b>Continuous Logging ('yosan switch -m')</b>: Enter sequential items without repeating command names. Exit with <b>'yosan -juubun'</b> or <b>'exit'</b>.<br/>"
+            "• <b>Cloud Security & Authentication</b>: 1.0s debounced username/email validation, real-time password strength checking (8+ chars, uppercase, digit, symbol), real-time confirmation match badges, and PBKDF2 600k hashing.",
             subtitle_style,
         )
     )
@@ -1604,22 +1605,32 @@ def main():
 
     init_db()
 
-    # Route: yosan -t [optional_month_code]
+    # Route: yosan -t [-d MMYYYY / MMYYYY]
     if "-t" in sys.argv or "--transactions" in sys.argv:
         target_code = None
-        for arg in sys.argv[1:]:
-            if arg not in ["-t", "--transactions"]:
-                target_code = arg
-                break
+        if "-d" in sys.argv:
+            d_idx = sys.argv.index("-d")
+            if d_idx + 1 < len(sys.argv):
+                target_code = sys.argv[d_idx + 1]
+        else:
+            for arg in sys.argv[1:]:
+                if arg not in ["-t", "--transactions"] and not arg.startswith("-"):
+                    target_code = arg
+                    break
         show_transaction_ledger(target_code)
         return
 
     if "-report" in sys.argv or "--report" in sys.argv:
         target_code = None
-        for arg in sys.argv[1:]:
-            if arg not in ["-report", "--report"]:
-                target_code = arg
-                break
+        if "-d" in sys.argv:
+            d_idx = sys.argv.index("-d")
+            if d_idx + 1 < len(sys.argv):
+                target_code = sys.argv[d_idx + 1]
+        else:
+            for arg in sys.argv[1:]:
+                if arg not in ["-report", "--report"] and not arg.startswith("-"):
+                    target_code = arg
+                    break
         export_monthly_report(target_code)
         return
 
@@ -1685,7 +1696,8 @@ def main():
     parser.add_argument("-burn", "--burn", action="store_true", help="Burn in / finalize the active budget to read-only")
     parser.add_argument("-jujutsu", "--jujutsu", action="store_true", help="Generate Command Reference Manual PDF")
     parser.add_argument("-s", "--summary", action="store_true", help="View sum total balance spent")
-    parser.add_argument("-t", "--transactions", action="store_true", help="View itemized transaction log")
+    parser.add_argument("-t", "--transactions", nargs="?", const=True, help="View itemized transaction log")
+    parser.add_argument("-d", "--date", help="Target Month Code (e.g. 032033)")
     parser.add_argument("-sh", "--show-remaining", action="store_true", help="View remaining branch allowance")
     parser.add_argument("-o", "--open", action="store_true", help="Open budget book in Excel")
     parser.add_argument("-p", "--profile", action="store_true", help="View profile and account settings")
@@ -1735,7 +1747,7 @@ def main():
         return
 
     if args.transactions:
-        show_transaction_ledger()
+        show_transaction_ledger(args.date)
         return
 
     if args.show_remaining:
@@ -1788,7 +1800,3 @@ def main():
         return
 
     print_remaining_balance()
-
-
-if __name__ == "__main__":
-    main()
