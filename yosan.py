@@ -918,7 +918,7 @@ def create_new_budget():
                 return
 
             try:
-                income_val = float(raw_input)
+                income_val = float(raw_input.replace(",", ""))
                 if income_val <= 0:
                     print(f"{C.RED}❌ Total budget must be greater than 0.{C.RESET}")
                     continue
@@ -1064,8 +1064,10 @@ def create_new_budget():
             for name, amt in branch_allocations.items():
                 pct = (amt / total_income) * 100.0
                 cat_color = CATEGORY_ANSI.get(name, C.WHITE)
-                print(f"    - {cat_color}{name:<12}{C.RESET}: {C.YELLOW}₹{amt:>10.2f}{C.RESET} {C.GRAY}({pct:>5.1f}%){C.RESET}")
-            print(f"  {C.BOLD}Total Budget : {C.GREEN}₹{total_income:>10.2f}{C.RESET}")
+                amt_str = f"₹{amt:,.2f}"
+                print(f"    - {cat_color}{name:<12}{C.RESET}: {C.YELLOW}{amt_str:>16}{C.RESET} {C.GRAY}({pct:>5.1f}%){C.RESET}")
+            total_str = f"₹{total_income:,.2f}"
+            print(f"  {C.BOLD}Total Budget : {C.GREEN}{total_str:>16}{C.RESET}")
             print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}")
 
             confirm = input(f"Confirm creation of {month_display}? (Y / p=prev / b=cancel): ").strip().upper()
@@ -1102,7 +1104,6 @@ def create_new_budget():
                 sync_to_excel()
                 print(f"\n{C.GREEN}{C.BOLD}🎉 Budget for {month_display} is locked in and active!{C.RESET}\n")
                 return
-
 
 def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = None):
     init_db()
