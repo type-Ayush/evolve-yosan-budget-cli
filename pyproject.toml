@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yosan"
-version = "1.0.1"
+version = "1.0.2"
 description = "Terminal Budgeting and Financial Ledger CLI Engine"
 authors = [{ name = "Ayush Jain" }]
 requires-python = ">=3.8"
