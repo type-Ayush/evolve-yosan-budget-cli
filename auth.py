@@ -15,7 +15,8 @@ os.system("")
 
 # Cloud Production API URL with local development fallback
 API_URL = os.environ.get("YOSAN_API_URL", "https://evolve-yosan-budget-cli.onrender.com/api").rstrip("/")
-SESSION_FILE = Path.home() / "Documents" / ".yosan_session.json"
+DATA_DIR = Path.home() / "Documents"
+SESSION_FILE = DATA_DIR / ".yosan_session.json"
 
 
 # ==========================================
@@ -149,7 +150,7 @@ def evaluate_password_strength(pw: str) -> tuple[int, str]:
 # ==========================================
 # ⌨️ INTERACTIVE LIVE INPUT HANDLERS
 # ==========================================
-def masked_password_input(prompt: str, match_against: str = None, check_strength: bool = False) -> str:
+def masked_password_input(prompt: str, match_against: str = None, check_strength: bool = False, allow_prev: bool = False) -> str:
     colored_prompt = f"{C.CYAN}{prompt}{C.RESET}"
     sys.stdout.write(f"\r{colored_prompt}\033[K")
     sys.stdout.flush()
@@ -162,6 +163,11 @@ def masked_password_input(prompt: str, match_against: str = None, check_strength
         if ch in ("\r", "\n"):
             if not current_text:
                 continue
+
+            # Allow 'p' / 'prev' to navigate back to the previous input step
+            if allow_prev and current_text.lower() in ["p", "prev", "previous"]:
+                sys.stdout.write("\n")
+                return "PREV"
 
             if current_text.lower() in ["b", "back"]:
                 sys.stdout.write("\n")
@@ -187,7 +193,8 @@ def masked_password_input(prompt: str, match_against: str = None, check_strength
                     return current_text
                 else:
                     sys.stdout.write(f"\r{colored_prompt}{'*' * len(buffer)} {C.RED}✖ [Mismatch]{C.RESET}\033[K\n")
-                    print(f"  {C.RED}└─ ❌ Passwords do not match. Try again.{C.GRAY} (Type 'b' to go back){C.RESET}")
+                    prev_hint = " or 'p' to re-enter password" if allow_prev else ""
+                    print(f"  {C.RED}└─ ❌ Passwords do not match. Try again.{C.GRAY} (Type 'b' to cancel{prev_hint}){C.RESET}")
                     buffer = []
                     sys.stdout.write(f"\r{colored_prompt}\033[K")
                     sys.stdout.flush()
@@ -209,7 +216,7 @@ def masked_password_input(prompt: str, match_against: str = None, check_strength
 
         current_text = "".join(buffer)
         badge = ""
-        if current_text.lower() not in ["b", "back"]:
+        if current_text.lower() not in ["b", "back", "p", "prev"]:
             if check_strength:
                 _, badge = evaluate_password_strength(current_text)
             elif match_against is not None and current_text:
@@ -470,7 +477,7 @@ def get_current_user() -> str:
 
 
 def save_session(token: str, username: str):
-    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(SESSION_FILE, "w", encoding="utf-8") as f:
         json.dump({"token": token, "username": username}, f)
 
@@ -516,13 +523,21 @@ def register_flow() -> bool:
     print(f"\n {C.GRAY}Password requirements:{C.RESET}")
     print(f" {C.GRAY}• Min 8 characters | 1 Uppercase (A-Z) | 1 Digit (0-9) | 1 Symbol{C.RESET}\n")
 
+    # Password creation loop with back-navigation from confirmation
     while True:
         password = masked_password_input("Enter Password: ", check_strength=True)
         if password == "BACK":
             print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
             return False
 
-        confirm_pw = masked_password_input("Confirm Password: ", match_against=password)
+        confirm_pw = masked_password_input(
+            "Confirm Password (or 'p' to re-enter password): ",
+            match_against=password,
+            allow_prev=True
+        )
+        if confirm_pw == "PREV":
+            print(f"{C.GRAY}↩ Returning to re-enter password...{C.RESET}")
+            continue
         if confirm_pw == "BACK":
             print(f"{C.GRAY}↩ Returning to menu...{C.RESET}")
             return False
@@ -645,16 +660,24 @@ def forgot_password_flow():
             if otp in ["b", "back"]:
                 return
 
-            new_pw = masked_password_input("Enter New Password: ", check_strength=True)
-            if new_pw == "BACK":
-                return
+            while True:
+                new_pw = masked_password_input("Enter New Password: ", check_strength=True)
+                if new_pw == "BACK":
+                    return
 
-            confirm_pw = masked_password_input("Confirm New Password: ", match_against=new_pw)
-            if confirm_pw == "BACK":
-                return
+                confirm_pw = masked_password_input(
+                    "Confirm New Password (or 'p' to re-enter password): ",
+                    match_against=new_pw,
+                    allow_prev=True
+                )
+                if confirm_pw == "PREV":
+                    print(f"{C.GRAY}↩ Returning to re-enter password...{C.RESET}")
+                    continue
+                if confirm_pw == "BACK":
+                    return
 
-            if confirm_pw != new_pw:
-                continue
+                if confirm_pw == new_pw:
+                    break
 
             with Spinner("Updating cloud security credentials..."):
                 reset_res = requests.post(
@@ -741,11 +764,10 @@ def delete_account_flow():
             gc.collect()
             time.sleep(0.3)
 
-            data_dir = Path.home() / "Documents"
             safe_name = "".join(c for c in uname if c.isalnum() or c in ("-", "_")).lower()
 
             for filename in [f"yosan_{safe_name}.db", f"budget_book_{safe_name}.xlsx"]:
-                file_target = data_dir / filename
+                file_target = DATA_DIR / filename
                 if file_target.exists():
                     try:
                         file_target.unlink(missing_ok=True)
@@ -784,8 +806,8 @@ def show_profile_view():
         return
 
     safe_name = "".join(c for c in user_info["username"] if c.isalnum() or c in ("-", "_")).lower()
-    local_db = Path.home() / "Documents" / f"yosan_{safe_name}.db"
-    local_xl = Path.home() / "Documents" / f"budget_book_{safe_name}.xlsx"
+    local_db = DATA_DIR / f"yosan_{safe_name}.db"
+    local_xl = DATA_DIR / f"budget_book_{safe_name}.xlsx"
 
     while True:
         print_box_banner(title="YOSAN USER ACCOUNT PROFILE", color=C.CYAN)
@@ -808,31 +830,38 @@ def show_profile_view():
             if old_pw == "BACK":
                 continue
 
-            new_pw = masked_password_input("Enter new password: ", check_strength=True)
-            if new_pw == "BACK":
-                continue
+            while True:
+                new_pw = masked_password_input("Enter new password: ", check_strength=True)
+                if new_pw == "BACK":
+                    break
 
-            confirm_pw = masked_password_input("Confirm new password: ", match_against=new_pw)
-            if confirm_pw == "BACK":
-                continue
+                confirm_pw = masked_password_input(
+                    "Confirm new password (or 'p' to re-enter password): ",
+                    match_against=new_pw,
+                    allow_prev=True
+                )
+                if confirm_pw == "PREV":
+                    print(f"{C.GRAY}↩ Returning to re-enter password...{C.RESET}")
+                    continue
+                if confirm_pw == "BACK":
+                    break
 
-            if new_pw != confirm_pw:
-                continue
-
-            try:
-                with Spinner("Updating cloud password..."):
-                    chg_res = requests.post(
-                        f"{API_URL}/user/change-password",
-                        headers=headers,
-                        json={"old_password": old_pw, "new_password": new_pw},
-                        timeout=10,
-                    )
-                if chg_res.status_code == 200:
-                    print(f"\n{C.GREEN}🎉 {chg_res.json()['message']}{C.RESET}\n")
-                else:
-                    print(f"\n{C.RED}❌ {chg_res.json().get('detail')}{C.RESET}\n")
-            except requests.exceptions.ConnectionError:
-                print(f"{C.RED}❌ Cloud server unreachable.{C.RESET}")
+                if new_pw == confirm_pw:
+                    try:
+                        with Spinner("Updating cloud password..."):
+                            chg_res = requests.post(
+                                f"{API_URL}/user/change-password",
+                                headers=headers,
+                                json={"old_password": old_pw, "new_password": new_pw},
+                                timeout=10,
+                            )
+                        if chg_res.status_code == 200:
+                            print(f"\n{C.GREEN}🎉 {chg_res.json()['message']}{C.RESET}\n")
+                        else:
+                            print(f"\n{C.RED}❌ {chg_res.json().get('detail')}{C.RESET}\n")
+                    except requests.exceptions.ConnectionError:
+                        print(f"{C.RED}❌ Cloud server unreachable.{C.RESET}")
+                    break
         elif choice == "2":
             clear_session()
             sys.exit(0)
@@ -844,8 +873,24 @@ def show_profile_view():
 
 
 def require_login() -> bool:
-    if get_token():
-        return True
+    token = get_token()
+    if token:
+        # Verify cached token with remote server to detect account deletion from other machines
+        try:
+            res = requests.get(
+                f"{API_URL}/user/profile",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=3
+            )
+            if res.status_code == 200:
+                return True
+            else:
+                print(f"\n{C.RED}⚠️ Session invalid or account removed on another device. Please log in again.{C.RESET}")
+                if SESSION_FILE.exists():
+                    SESSION_FILE.unlink()
+        except Exception:
+            # Fall back to offline cached session if server is momentarily unreachable
+            return True
 
     while True:
         print_box_banner(title="YOSAN CLOUD ACCESS - AUTHENTICATION", color=C.CYAN)
