@@ -1,9 +1,11 @@
 import argparse
 import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import shutil
 import sqlite3
 import sys
@@ -1128,7 +1130,9 @@ def generate_jujutsu_manual():
 
     commands = [
         ("yosan", "Displays the live Remaining Budget breakdown and status of the current active month."),
-        ("yosan -t, --transactions", "Prints date-wise grouped transaction ledger for the active cycle or historical month ('-d MMYYYY')."),
+        ("yosan -t, --transactions [-N]", "Prints transaction ledger grouped by calendar day. Pass -N (e.g. -t -5) to slice recent records."),
+        ("yosan -last", "Catch-up wizard: discovers last logged active date and sequentially guides backlog logging."),
+        ("yosan shell, yosan sh", "Opens persistent interactive terminal shell prompt ('yosan > ') without requiring command prefix."),
         ("yosan transfer", "Inter-branch budget transfer wizard to move funds directly between categories."),
         ("yosan credits", "Displays core architect attribution and system co-creator signatures."),
         ("yosan switch [flag]", "Enters continuous entry mode for a category branch. Type 'yosan -juubun' to exit."),
@@ -1221,13 +1225,165 @@ def show_credits():
     print(f"{C.CYAN}╚" + ("═" * box_width) + f"╝{C.RESET}")
     print(f"  {C.CYAN}•{C.RESET} Core Developer : {C.GREEN}{C.BOLD}Ayush Jain{C.RESET}")
     print(f"  {C.CYAN}•{C.RESET} AI Co-Creator  : {C.PURPLE}{C.BOLD}Gemini ✨{C.RESET}")
-    print(f"  {C.CYAN}•{C.RESET} System Version : {C.YELLOW}1.0.2 (Jujutsu Outbox Architecture){C.RESET}")
+    print(f"  {C.CYAN}•{C.RESET} System Version : {C.YELLOW}1.0.3 (Sticky Shell & Backlog Edition){C.RESET}")
     print(f"  {C.CYAN}•{C.RESET} Cloud Engine   : {C.WHITE}FastAPI / Render API + Local SQLite Sync{C.RESET}")
     print(f"{C.CYAN}════════════════════════════════════════════════════════════════{C.RESET}\n")
 
 
 # ==========================================
-# 7. CLI CORE FUNCTIONS
+# 7. BACKLOG & CATCH-UP LOGGING WIZARD (-last)
+# ==========================================
+def catchup_backlog_wizard():
+    init_db()
+    active_m = get_active_month()
+    if not active_m:
+        print(f"\n{C.RED}🔒 ACCESS DENIED: Active budget cycle is locked.{C.RESET}\n")
+        return
+
+    sym = get_cur_sym()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT timestamp FROM transactions WHERE month_id = ?
+            UNION ALL
+            SELECT timestamp FROM topups WHERE month_id = ?
+            ORDER BY timestamp DESC LIMIT 1
+            """,
+            (active_m["id"], active_m["id"]),
+        )
+        last_row = cursor.fetchone()
+
+    today_date = datetime.now().date()
+
+    if not last_row:
+        print(f"\n{C.YELLOW}ℹ️ No transactions recorded yet in {active_m['month_name']}.{C.RESET}")
+        start_date_str = input("Enter start date to catch up from (YYYY-MM-DD) [Default: Today]: ").strip()
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date() if start_date_str else today_date
+        except ValueError:
+            print(f"{C.RED}❌ Invalid date format.{C.RESET}")
+            return
+    else:
+        last_dt = datetime.strptime(last_row["timestamp"], "%Y-%m-%d %H:%M:%S").date()
+        print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════════════╗{C.RESET}")
+        print(f"{C.CYAN}║{C.RESET}             {C.BOLD}{C.WHITE}YOSAN BACKLOG & CATCH-UP LOGGING WIZARD{C.RESET}                   {C.CYAN}║{C.RESET}")
+        print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════════════╝{C.RESET}")
+        print(f"  {C.CYAN}•{C.RESET} Last recorded entry : {C.GREEN}{last_dt.strftime('%d %b %Y (%A)')}{C.RESET}")
+        print(f"  {C.CYAN}•{C.RESET} Today's date         : {C.WHITE}{today_date.strftime('%d %b %Y (%A)')}{C.RESET}")
+
+        if last_dt >= today_date:
+            print(f"\n{C.GREEN}✔ Your ledger is already up to date with today!{C.RESET}")
+            add_more = input("Do you still want to log an entry for today or another day? (Y/N): ").strip().upper()
+            if add_more != "Y":
+                return
+            start_date = today_date
+        else:
+            diff_days = (today_date - last_dt).days
+            print(f"  {C.YELLOW}⚠️  Missing unlogged span: {diff_days} day(s) behind.{C.RESET}")
+            start_date = last_dt + timedelta(days=1)
+
+    flag_map = {
+        "-m": "Mess Food",
+        "-c": "Clothes",
+        "-a": "Accessories",
+        "-v": "Savings",
+        "-l": "Lent / Loans",
+    }
+
+    curr_date = start_date
+    while curr_date <= today_date:
+        date_heading = curr_date.strftime("%d %b %Y (%A)")
+        print(f"\n {C.CYAN}📅 LOGGING FOR: {C.BOLD}{date_heading}{C.RESET} {C.GRAY}" + "─" * 45 + f"{C.RESET}")
+        print(f"  {C.GRAY}Categories: -m (Mess), -c (Clothes), -a (Accessories), -v (Savings), -l (Loans){C.RESET}")
+        print(f"  {C.GRAY}Type 'next' to jump to next day, or 'exit' / 'q' to stop wizard.{C.RESET}")
+
+        while True:
+            cmd_in = input(f" [{C.YELLOW}{curr_date.strftime('%d %b')}{C.RESET}] Branch flag (-m/-c/-a/-v/-l / next / exit): ").strip()
+            if cmd_in.lower() in ["exit", "q", "quit"]:
+                print(f"\n{C.GREEN}✅ Exited Backlog Catch-Up Wizard.{C.RESET}\n")
+                print_remaining_balance()
+                return
+
+            if cmd_in.lower() in ["next", "n", "skip"]:
+                break
+
+            if cmd_in not in flag_map:
+                print(f"  {C.RED}❌ Unknown flag. Use -m, -c, -a, -v, or -l.{C.RESET}")
+                continue
+
+            target_branch = flag_map[cmd_in]
+            desc = input(f"  [{target_branch}] Description: ").strip()
+            if not desc:
+                continue
+
+            amt_str = input(f"  [{target_branch}] Amount for '{desc}' ({sym}): ").strip()
+            try:
+                amt = float(amt_str.replace(",", "").replace(sym, "").replace("₹", ""))
+                if amt <= 0:
+                    continue
+                custom_timestamp = f"{curr_date.strftime('%Y-%m-%d')} {datetime.now().strftime('%H:%M:%S')}"
+                add_entry(target_branch, desc, amt, timestamp_override=custom_timestamp)
+            except ValueError:
+                print(f"  {C.RED}❌ Invalid numeric amount.{C.RESET}")
+
+        curr_date += timedelta(days=1)
+
+    print(f"\n{C.GREEN}{C.BOLD}🎉 Catch-up logging completed through {today_date.strftime('%d %b %Y')}!{C.RESET}\n")
+    print_remaining_balance()
+
+
+# ==========================================
+# 8. STICKY INTERACTIVE CLI SHELL
+# ==========================================
+def run_interactive_shell():
+    print(f"\n{C.CYAN}╔═════════════════════════════════════════════════════════════════╗{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}                  {C.BOLD}{C.WHITE}YOSAN INTERACTIVE CLI SHELL{C.RESET}                    {C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}   {C.GRAY}Commands run automatically without typing 'yosan' prefix.{C.RESET}     {C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}║{C.RESET}   {C.GRAY}Type 'exit', 'quit', or 'q' to return to normal terminal. {C.RESET}    {C.CYAN}║{C.RESET}")
+    print(f"{C.CYAN}╚═════════════════════════════════════════════════════════════════╝{C.RESET}\n")
+
+    while True:
+        try:
+            line = input(f"{C.CYAN}{C.BOLD}yosan{C.RESET} {C.YELLOW}>{C.RESET} ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n")
+            break
+
+        if not line:
+            continue
+
+        if line.lower() in ["exit", "quit", "q"]:
+            print(f"{C.GREEN}Exited Yosan Shell.{C.RESET}\n")
+            break
+
+        if line.lower() == "clear" or line.lower() == "cls":
+            os.system("cls" if os.name == "nt" else "clear")
+            continue
+
+        try:
+            parsed_args = shlex.split(line)
+        except Exception as e:
+            print(f"{C.RED}Syntax error: {e}{C.RESET}")
+            continue
+
+        if parsed_args and parsed_args[0].lower() == "yosan":
+            parsed_args = parsed_args[1:]
+
+        saved_argv = sys.argv
+        sys.argv = ["yosan"] + parsed_args
+        try:
+            main_dispatcher()
+        except SystemExit:
+            pass
+        except Exception as ex:
+            print(f"{C.RED}Command failed: {ex}{C.RESET}")
+        finally:
+            sys.argv = saved_argv
+
+
+# ==========================================
+# 9. CLI CORE FUNCTIONS
 # ==========================================
 def validate_month_code(code: str):
     if len(code) != 6 or not code.isdigit():
@@ -1594,7 +1750,7 @@ def update_branch_budget(cat_name: str, add_amount: float = None, desc: str = No
     print(f"{C.CYAN}═══════════════════════════════════════════════════════{C.RESET}\n")
 
 
-def add_entry(cat_name: str, desc: str, amount: float):
+def add_entry(cat_name: str, desc: str, amount: float, timestamp_override: str = None):
     init_db()
     active_m = get_active_month()
     if not active_m:
@@ -1603,7 +1759,7 @@ def add_entry(cat_name: str, desc: str, amount: float):
         return
 
     sym = get_cur_sym()
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = timestamp_override if timestamp_override else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -1615,7 +1771,6 @@ def add_entry(cat_name: str, desc: str, amount: float):
         )
         conn.commit()
 
-    # Cloud outbox sync attempt
     try:
         session_file = DATA_DIR / ".yosan_session.json"
         token = ""
@@ -1636,7 +1791,7 @@ def add_entry(cat_name: str, desc: str, amount: float):
 
     sync_to_excel()
     cat_color = CATEGORY_ANSI.get(cat_name, C.WHITE)
-    print(f" {C.GREEN}✔{C.RESET} Saved under [{cat_color}{cat_name}{C.RESET}]: {C.WHITE}{desc}{C.RESET} -> {C.RED}{sym}{amount:.2f}{C.RESET}")
+    print(f" {C.GREEN}✔{C.RESET} Saved under [{cat_color}{cat_name}{C.RESET}]: {C.WHITE}{desc}{C.RESET} -> {C.RED}{sym}{amount:.2f}{C.RESET} ({C.GRAY}{ts[:10]}{C.RESET})")
 
 
 def continuous_interactive_entry(cat_name: str):
@@ -1798,7 +1953,10 @@ def print_remaining_balance():
         print(f"{C.CYAN}" + "═" * 101 + f"{C.RESET}\n")
 
 
-def show_transaction_ledger(month_code: str = None):
+# ==========================================
+# 10. DATE-WISE TRANSACTION LEDGER (-t, -t -N)
+# ==========================================
+def show_transaction_ledger(month_code: str = None, limit: int = None):
     init_db()
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1826,12 +1984,16 @@ def show_transaction_ledger(month_code: str = None):
         )
         tx_list = cursor.fetchall()
 
+    if limit and limit > 0 and len(tx_list) > limit:
+        tx_list = tx_list[-limit:]
+
+    limit_badge = f" [Last {limit} entries]" if limit else ""
     print(f"\n{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
-    print(f"  {C.BOLD}TRANSACTION LEDGER: {target_m['month_name'].upper()} [{target_m['month_code']}]{C.RESET}")
+    print(f"  {C.BOLD}TRANSACTION LEDGER: {target_m['month_name'].upper()} [{target_m['month_code']}]{limit_badge}{C.RESET}")
     print(f"{C.CYAN}═════════════════════════════════════════════════════════════════════════════════════{C.RESET}")
 
     if not tx_list:
-        print(f"\n{C.GRAY}  ℹ️  No transactions recorded for this month.{C.RESET}\n")
+        print(f"\n{C.GRAY}  ℹ️  No transactions recorded for this period.{C.RESET}\n")
         return
 
     grouped = {}
@@ -2051,9 +2213,19 @@ def burn_current_budget():
 
 
 # ==========================================
-# 8. MAIN ROUTING & ARGPARSE
+# 11. MAIN DISPATCHER
 # ==========================================
-def main():
+def main_dispatcher():
+    # Detect -last catchup wizard
+    if "-last" in sys.argv or "--last" in sys.argv or "last" in sys.argv:
+        catchup_backlog_wizard()
+        return
+
+    # Detect interactive shell mode
+    if "shell" in sys.argv or "sh" in sys.argv:
+        run_interactive_shell()
+        return
+
     if "-credits" in sys.argv or "--credits" in sys.argv or "credits" in sys.argv:
         show_credits()
         return
@@ -2097,19 +2269,25 @@ def main():
         download_user_data(dest_dir)
         return
 
-    # Route: yosan -t [-d MMYYYY / MMYYYY]
+    # Route: yosan -t [-d MMYYYY] [-<N>]
     if "-t" in sys.argv or "--transactions" in sys.argv:
         target_code = None
+        limit_val = None
+
+        for arg in sys.argv[1:]:
+            if arg in ["-t", "--transactions"]:
+                continue
+            if re.match(r"^-\d+$", arg):
+                limit_val = abs(int(arg))
+            elif arg != "-d" and not arg.startswith("-"):
+                target_code = arg
+
         if "-d" in sys.argv:
             d_idx = sys.argv.index("-d")
             if d_idx + 1 < len(sys.argv):
                 target_code = sys.argv[d_idx + 1]
-        else:
-            for arg in sys.argv[1:]:
-                if arg not in ["-t", "--transactions"] and not arg.startswith("-"):
-                    target_code = arg
-                    break
-        show_transaction_ledger(target_code)
+
+        show_transaction_ledger(target_code, limit=limit_val)
         return
 
     if "-report" in sys.argv or "--report" in sys.argv:
@@ -2204,6 +2382,7 @@ def main():
     parser.add_argument("-delete-account", "--delete-account", action="store_true", help="Permanently delete active account and data")
     parser.add_argument("-credits", "--credits", action="store_true", help="Display project credits")
     parser.add_argument("-transfer", "--transfer", action="store_true", help="Transfer budget between branches")
+    parser.add_argument("-last", "--last", action="store_true", help="Catch-up backlog entries day-by-day")
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
@@ -2213,6 +2392,8 @@ def main():
     subparsers.add_parser("jujutsu", help="Open the Command Manual PDF")
     subparsers.add_parser("credits", help="Display project attributions")
     subparsers.add_parser("transfer", help="Reallocate budget from one category to another")
+    subparsers.add_parser("shell", help="Interactive terminal prompt shell ('yosan > ')")
+    subparsers.add_parser("last", help="Launch backlog and catch-up logging wizard")
 
     switch_parser = subparsers.add_parser("switch", help="Switch to a specific category")
     switch_parser.add_argument("-m", "--mess", action="store_true", help="Mess Food")
@@ -2325,6 +2506,10 @@ def main():
         return
 
     print_remaining_balance()
+
+
+def main():
+    main_dispatcher()
 
 
 if __name__ == "__main__":
